@@ -1,0 +1,179 @@
+import Foundation
+import SwiftUI
+import CoreLocation
+
+// MARK: - Tipos de Gatilhos
+enum AutomationTriggerType: String, Codable, CaseIterable {
+    case time = "Horário"
+    case temperature = "Temperatura"
+    case humidity = "Humidade"
+    case gasDetected = "Gás Detetado"
+    case deviceState = "Estado do Dispositivo"
+    case location = "Localização"
+    case sunset = "Pôr do Sol"
+    case sunrise = "Nascer do Sol"
+}
+
+// MARK: - Tipos de Ações
+enum AutomationActionType: String, Codable, CaseIterable {
+    case turnOn = "Ligar"
+    case turnOff = "Desligar"
+    case setColor = "Mudar Cor"
+    case setBrightness = "Ajustar Brilho"
+    case notify = "Notificar"
+    case sendEmail = "Enviar Email"
+}
+
+// MARK: - Condições de Comparação
+enum ComparisonOperator: String, Codable, CaseIterable {
+    case greaterThan = ">"
+    case lessThan = "<"
+    case equals = "="
+    case notEquals = "≠"
+}
+
+// MARK: - Estrutura de Ação (permite múltiplas ações)
+struct AutomationAction: Identifiable, Codable {
+    var id: String = UUID().uuidString
+    var type: AutomationActionType
+    var targetDeviceId: String?
+    var value: String? // Ex: cor RGB, brilho, mensagem de notificação
+}
+
+// MARK: - Estrutura de Localização
+struct AutomationLocation: Codable {
+    var latitude: Double
+    var longitude: Double
+    var radius: Double // Metros (ex: 100m)
+    var name: String // Ex: "Casa", "Trabalho"
+    
+    func distance(from location: CLLocation) -> Double {
+        let center = CLLocation(latitude: latitude, longitude: longitude)
+        return location.distance(from: center)
+    }
+    
+    func contains(_ location: CLLocation) -> Bool {
+        return distance(from: location) <= radius
+    }
+}
+
+// MARK: - Histórico de Execução
+struct AutomationExecution: Identifiable, Codable {
+    var id: String = UUID().uuidString
+    var automationId: String
+    var timestamp: Date
+    var success: Bool
+    var message: String?
+}
+
+// MARK: - Modelo Principal de Automação
+struct Automation: Identifiable, Codable {
+    var id: String = UUID().uuidString
+    var name: String
+    var isEnabled: Bool = true
+    var icon: String = "bolt.fill"
+    var color: String = "blue"
+    
+    // GATILHO
+    var triggerType: AutomationTriggerType
+    
+    // Gatilho: Horário
+    var triggerTime: Date?
+    var triggerDays: [Int]? // 0=Domingo, 1=Segunda, etc.
+    
+    // Gatilho: Sensor (Temperatura/Humidade)
+    var triggerDeviceId: String?
+    var comparisonOperator: ComparisonOperator?
+    var triggerValue: Double? // Ex: 25.0 para temperatura
+    
+    // Gatilho: Localização
+    var triggerLocation: AutomationLocation?
+    var locationTriggerType: LocationTriggerType? // Entrar ou Sair
+    
+    // AÇÕES (Múltiplas)
+    var actions: [AutomationAction] = []
+    
+    // EXECUÇÃO
+    var lastTriggered: Date?
+    var executionCount: Int = 0
+    
+    // MARK: - Helpers Visuais
+    var uiColor: Color {
+        switch color {
+        case "blue": return .blue
+        case "purple": return .purple
+        case "orange": return .orange
+        case "green": return .green
+        case "red": return .red
+        case "pink": return .pink
+        case "cyan": return .cyan
+        default: return .blue
+        }
+    }
+    
+    var conditionsDescription: String {
+        switch triggerType {
+        case .time:
+            let time = triggerTime?.formatted(date: .omitted, time: .shortened) ?? "?"
+            if let days = triggerDays, !days.isEmpty {
+                let dayNames = days.map { dayName($0) }.joined(separator: ", ")
+                return "\(time) (\(dayNames))"
+            }
+            return time
+            
+        case .temperature:
+            let op = comparisonOperator?.rawValue ?? ">"
+            let val = triggerValue ?? 0
+            return "Temperatura \(op) \(String(format: "%.1f", val))°C"
+            
+        case .humidity:
+            let op = comparisonOperator?.rawValue ?? "<"
+            let val = triggerValue ?? 0
+            return "Humidade \(op) \(String(format: "%.0f", val))%"
+            
+        case .gasDetected:
+            return "Gás detetado"
+            
+        case .location:
+            if let loc = triggerLocation {
+                let type = locationTriggerType == .enter ? "Chegar a" : "Sair de"
+                return "\(type) \(loc.name)"
+            }
+            return "Localização"
+            
+        case .sunset:
+            return "Ao pôr do sol"
+            
+        case .sunrise:
+            return "Ao nascer do sol"
+            
+        case .deviceState:
+            return "Estado do dispositivo"
+        }
+    }
+    
+    var actionsDescription: String {
+        if actions.isEmpty {
+            return "Sem ações"
+        }
+        return actions.map { $0.type.rawValue }.joined(separator: ", ")
+    }
+    
+    private func dayName(_ day: Int) -> String {
+        let names = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
+        return names[safe: day] ?? "?"
+    }
+}
+
+// MARK: - Tipo de Gatilho de Localização
+enum LocationTriggerType: String, Codable, CaseIterable {
+    case enter = "Entrar"
+    case exit = "Sair"
+}
+
+// MARK: - Helper para Arrays
+extension Array {
+    subscript(safe index: Int) -> Element? {
+        return indices.contains(index) ? self[index] : nil
+    }
+}

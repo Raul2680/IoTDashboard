@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Precisamos da câmera para ler o QR Code do Home Assistant</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Permite que automações sejam disparadas quando entrar ou sair de locais específicos</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Esta app precisa de acesso à localização em segundo plano para automações funcionarem quando a app está fechada</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Esta app precisa de acesso à localização para automações baseadas em geofencing</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Esta app precisa de acesso ao Bluetooth para comunicar com sensores IoT</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Esta app precisa de Bluetooth para configurar dispositivos ESP32 via BLE</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Esta app precisa de aceder à rede local para encontrar e controlar a lâmpada e sensores.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.675860077904-ull3ek930ct4006ha88s77ljb1rkv8rm</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+		<string>_ssdp._udp</string>
+	</array>
+</dict>
+</plist>
