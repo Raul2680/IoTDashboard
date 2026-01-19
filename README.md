@@ -1,3 +1,6 @@
+![Swift Version](https://img.shields.io/badge/Swift-5.9-orange?style=for-the-badge&logo=swift)
+![Xcode](https://img.shields.io/badge/Xcode-15-blue?style=for-the-badge&logo=xcode)
+![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 # 🚀 IoTDashboard - Seu Centro de Controle Inteligente para IoT
 
 ![Banner Animado do IoTDashboard](https://via.placeholder.com/800x400/007AFF/FFFFFF?text=GIF+ou+Video+Curto+do+App+em+acao)
