@@ -4,6 +4,8 @@ import Combine
 
 class DeviceViewModel: ObservableObject {
     @Published var devices: [Device] = []
+    @Published var selectedDeviceForOverlay: Device? = nil
+    @Published var showQuickControl: Bool = false
     private var pollingTimer: Timer?
     private var currentUserId: String?
     
@@ -27,7 +29,7 @@ class DeviceViewModel: ObservableObject {
     
     func startPolling() {
         pollingTimer?.invalidate()
-        pollingTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+        pollingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.refreshAllDevices()
         }
     }
@@ -131,8 +133,26 @@ class DeviceViewModel: ObservableObject {
         }.resume()
     }
     
+    // Adicione isto dentro da classe DeviceViewModel em DeviceViewModel.swift
+    func toggleDevice(_ device: Device) {
+        let newState = !device.state
+        
+        // Se for LED, usa o comando UDP
+        if device.type == .led || device.type == .light {
+            controlLEDviaUDP(device: device, power: newState)
+        } else {
+            // Para outros dispositivos, apenas atualiza o estado localmente (se aplicável)
+            if let index = devices.firstIndex(where: { $0.id == device.id }) {
+                devices[index].state = newState
+                saveDevices()
+            }
+        }
+    }
+    
     // Mantém o fetchDeviceData original para dispositivos ESP32 locais
     func fetchDeviceData(at index: Int) {
+        // Segurança: Verifica se o índice ainda é válido no array antes de continuar
+        guard devices.indices.contains(index) else { return }
         let device = devices[index]
         
         if device.connectionProtocol == .http {
@@ -144,56 +164,58 @@ class DeviceViewModel: ObservableObject {
             URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
                 guard let self = self else { return }
                 
+                // Tratamento de Erros de Conexão
                 if let error = error {
                     print("❌ Erro ao conectar a \(device.ip): \(error.localizedDescription)")
                     DispatchQueue.main.async {
-                        self.devices[index].isOnline = false
+                        if self.devices.indices.contains(index) {
+                            self.devices[index].isOnline = false
+                        }
                     }
                     return
                 }
                 
-                guard let data = data else {
-                    print("❌ Sem dados de \(device.ip)")
+                guard let data = data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     DispatchQueue.main.async {
-                        self.devices[index].isOnline = false
+                        if self.devices.indices.contains(index) {
+                            self.devices[index].isOnline = false
+                        }
                     }
                     return
                 }
-                
-                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                    print("❌ JSON inválido de \(device.ip)")
-                    DispatchQueue.main.async {
-                        self.devices[index].isOnline = false
-                    }
-                    return
-                }
-                
-                print("✅ JSON recebido de \(device.ip): \(json)")
                 
                 DispatchQueue.main.async {
+                    // Verifica novamente o índice dentro da main thread antes de atualizar a UI
+                    guard self.devices.indices.contains(index) else { return }
+                    
                     self.devices[index].isOnline = true
                     self.devices[index].lastUpdate = Date()
                     
-                    // LED RGB
-                    if let power = json["power"] as? Int,
-                       let red = json["red"] as? Int,
-                       let green = json["green"] as? Int,
-                       let blue = json["blue"] as? Int,
-                       let brightness = json["brightness"] as? Int {
+                    // --- ATUALIZAÇÃO DO LED / LUZ ---
+                    if let power = json["power"] as? Int {
+                        let isOn = (power == 1)
+                        self.devices[index].state = isOn
                         
+                        // Extrai dados de cor e brilho se existirem
+                        let red = json["red"] as? Int ?? json["r"] as? Int ?? 255
+                        let green = json["green"] as? Int ?? json["g"] as? Int ?? 255
+                        let blue = json["blue"] as? Int ?? json["b"] as? Int ?? 255
+                        let brightness = json["brightness"] as? Int ?? json["bri"] as? Int ?? 100
+                        
+                        // Atualiza o ledState para que a HomeView mostre a % correta e o estado ON/OFF
                         self.devices[index].ledState = LedState(
-                            isOn: power == 1,
+                            isOn: isOn,
                             r: red,
                             g: green,
                             b: blue,
                             brightness: brightness
                         )
-                        self.devices[index].state = (power == 1)
                     }
                     
-                    // SENSOR
-                    if let temp = json["temperature"] as? Double,
-                       let hum = json["humidity"] as? Double {
+                    // --- ATUALIZAÇÃO DO SENSOR DHT ---
+                    if let temp = json["temperature"] as? Double ?? json["temp"] as? Double {
+                        let hum = json["humidity"] as? Double ?? json["hum"] as? Double ?? 0.0
                         
                         self.devices[index].sensorData = SensorData(
                             temperature: temp,
@@ -204,8 +226,8 @@ class DeviceViewModel: ObservableObject {
                         self.devices[index].humidity = hum
                     }
                     
-                    // GAS
-                    if let gasValue = json["gas"] as? Int {
+                    // --- ATUALIZAÇÃO DO SENSOR DE GÁS ---
+                    if let gasValue = json["gas"] as? Int ?? json["mq2"] as? Int {
                         self.devices[index].gasData = GasData(
                             mq2: gasValue,
                             mq7: json["mq7"] as? Int ?? 0,
