@@ -9,6 +9,8 @@ struct IoTDashboardApp: App {
     @StateObject private var themeManager = ThemeManager()
     @StateObject private var locationManager = LocationManager()
     @StateObject private var homeAssistantService = HomeAssistantService()
+    // ✅ ADICIONADO: Criar o ViewModel das Automações
+    @StateObject private var automationVM = AutomationViewModel()
     
     init() {
         FirebaseApp.configure()
@@ -30,23 +32,35 @@ struct IoTDashboardApp: App {
                 .environmentObject(themeManager)
                 .environmentObject(locationManager)
                 .environmentObject(homeAssistantService)
+                // ✅ ADICIONADO: Disponibilizar o AutomationVM para a App
+                .environmentObject(automationVM)
                 .preferredColorScheme(themeManager.colorScheme)
                 .onAppear {
-                    // ✅ NOVO: Liga DeviceVM ao HA Service
                     deviceVM.homeAssistantService = homeAssistantService
                     
+                    // ⚠️ A LINHA EM BAIXO É A QUE FALTAVA:
+                    // Ela permite que o DeviceVM envie dados de temperatura para o motor
+                    deviceVM.automationViewModel = automationVM
+                    
+                    // ✅ CRUCIAL: Isto liga o motor das automações aos teus dispositivos e localização
+                    automationVM.setDependencies(
+                        deviceVM: deviceVM,
+                        locationManager: locationManager
+                    )
+                    
                     locationManager.requestAlwaysPermission()
-                    print("📍 [App] Permissão de localização solicitada")
+                    print("📍 [App] Permissão de localização e dependências de automação configuradas")
                 }
         }
     }
 }
 
-
 struct MainTabView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var deviceVM: DeviceViewModel
     @EnvironmentObject var locationManager: LocationManager
+    // ✅ ADICIONADO: Acesso ao AutomationVM
+    @EnvironmentObject var automationVM: AutomationViewModel
 
     var body: some View {
         TabView {
@@ -68,5 +82,7 @@ struct MainTabView: View {
         .tint(themeManager.accentColor)
         .environmentObject(deviceVM)
         .environmentObject(locationManager)
+        // ✅ ADICIONADO: Passar para as sub-vistas
+        .environmentObject(automationVM)
     }
 }

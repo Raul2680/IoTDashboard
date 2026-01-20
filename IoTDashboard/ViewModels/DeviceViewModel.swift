@@ -12,6 +12,9 @@ class DeviceViewModel: ObservableObject {
     // ✅ NOVO: Referência ao Home Assistant Service
     weak var homeAssistantService: HomeAssistantService?
     
+    // ✅ NOVO: Referência ao Automation ViewModel para processar regras
+    weak var automationViewModel: AutomationViewModel?
+    
     init() {}
     
     func setUser(userId: String) {
@@ -98,6 +101,9 @@ class DeviceViewModel: ObservableObject {
                             )
                             self.devices[index].temperature = temp
                             self.devices[index].humidity = hum
+                            
+                            // ✅ AVISA AS AUTOMAÇÕES (Home Assistant)
+                            self.automationViewModel?.checkSensorAutomations(for: self.devices[index])
                         }
                         
                     case .led:
@@ -113,13 +119,14 @@ class DeviceViewModel: ObservableObject {
                         }
                         
                     case .gas:
-                        // Sensor binário de gás
                         self.devices[index].gasData = GasData(
                             mq2: entity.state == "on" ? 1000 : 0,
                             mq7: 0,
                             status: entity.state == "on" ? 2 : 0,
                             timestamp: Int(Date().timeIntervalSince1970)
                         )
+                        // ✅ AVISA AS AUTOMAÇÕES (Gás HA)
+                        self.automationViewModel?.checkSensorAutomations(for: self.devices[index])
                         
                     default:
                         break
@@ -133,15 +140,12 @@ class DeviceViewModel: ObservableObject {
         }.resume()
     }
     
-    // Adicione isto dentro da classe DeviceViewModel em DeviceViewModel.swift
     func toggleDevice(_ device: Device) {
         let newState = !device.state
         
-        // Se for LED, usa o comando UDP
         if device.type == .led || device.type == .light {
             controlLEDviaUDP(device: device, power: newState)
         } else {
-            // Para outros dispositivos, apenas atualiza o estado localmente (se aplicável)
             if let index = devices.firstIndex(where: { $0.id == device.id }) {
                 devices[index].state = newState
                 saveDevices()
@@ -149,9 +153,7 @@ class DeviceViewModel: ObservableObject {
         }
     }
     
-    // Mantém o fetchDeviceData original para dispositivos ESP32 locais
     func fetchDeviceData(at index: Int) {
-        // Segurança: Verifica se o índice ainda é válido no array antes de continuar
         guard devices.indices.contains(index) else { return }
         let device = devices[index]
         
@@ -164,7 +166,6 @@ class DeviceViewModel: ObservableObject {
             URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
                 guard let self = self else { return }
                 
-                // Tratamento de Erros de Conexão
                 if let error = error {
                     print("❌ Erro ao conectar a \(device.ip): \(error.localizedDescription)")
                     DispatchQueue.main.async {
@@ -186,24 +187,21 @@ class DeviceViewModel: ObservableObject {
                 }
                 
                 DispatchQueue.main.async {
-                    // Verifica novamente o índice dentro da main thread antes de atualizar a UI
                     guard self.devices.indices.contains(index) else { return }
                     
                     self.devices[index].isOnline = true
                     self.devices[index].lastUpdate = Date()
                     
-                    // --- ATUALIZAÇÃO DO LED / LUZ ---
+                    // --- ATUALIZAÇÃO DO LED ---
                     if let power = json["power"] as? Int {
                         let isOn = (power == 1)
                         self.devices[index].state = isOn
                         
-                        // Extrai dados de cor e brilho se existirem
                         let red = json["red"] as? Int ?? json["r"] as? Int ?? 255
                         let green = json["green"] as? Int ?? json["g"] as? Int ?? 255
                         let blue = json["blue"] as? Int ?? json["b"] as? Int ?? 255
                         let brightness = json["brightness"] as? Int ?? json["bri"] as? Int ?? 100
                         
-                        // Atualiza o ledState para que a HomeView mostre a % correta e o estado ON/OFF
                         self.devices[index].ledState = LedState(
                             isOn: isOn,
                             r: red,
@@ -224,6 +222,9 @@ class DeviceViewModel: ObservableObject {
                         )
                         self.devices[index].temperature = temp
                         self.devices[index].humidity = hum
+                        
+                        // ✅ CRUCIAL: AVISA AS AUTOMAÇÕES (ESP32)
+                        self.automationViewModel?.checkSensorAutomations(for: self.devices[index])
                     }
                     
                     // --- ATUALIZAÇÃO DO SENSOR DE GÁS ---
@@ -235,6 +236,9 @@ class DeviceViewModel: ObservableObject {
                             timestamp: Int(Date().timeIntervalSince1970)
                         )
                         self.devices[index].gasLevel = gasValue
+                        
+                        // ✅ AVISA AS AUTOMAÇÕES (Gás ESP32)
+                        self.automationViewModel?.checkSensorAutomations(for: self.devices[index])
                     }
                     
                     self.saveDevices()
@@ -244,19 +248,16 @@ class DeviceViewModel: ObservableObject {
     }
     
     func controlLEDviaUDP(device: Device, power: Bool? = nil, r: Int? = nil, g: Int? = nil, b: Int? = nil, brightness: Int? = nil) {
-        // ✅ Se for dispositivo HA, usa API do HA
         if device.id.hasPrefix("HA_") {
             controlHomeAssistantDevice(device: device, power: power, r: r, g: g, b: b, brightness: brightness)
             return
         }
         
-        // Controlo UDP normal para ESP32
         let udpService = UDPService(ip: device.ip)
         
         if let power = power {
             let command = power ? "ON" : "OFF"
             udpService.sendCommand(command)
-            print("✅ UDP: Power \(command) → \(device.ip)")
             
             if let index = devices.firstIndex(where: { $0.id == device.id }) {
                 devices[index].state = power
@@ -267,11 +268,10 @@ class DeviceViewModel: ObservableObject {
         
         if let r = r, let g = g, let b = b, let brightness = brightness {
             udpService.sendColor(r: r, g: g, b: b, brightness: brightness)
-            print("✅ UDP: COLOR R:\(r) G:\(g) B:\(b) Brilho:\(brightness) → \(device.ip)")
             
             if let index = devices.firstIndex(where: { $0.id == device.id }) {
                 devices[index].ledState = LedState(
-                    isOn: power ?? false,
+                    isOn: power ?? devices[index].state,
                     r: r,
                     g: g,
                     b: b,
@@ -286,24 +286,16 @@ class DeviceViewModel: ObservableObject {
         }
     }
     
-    // ✅ NOVO: Controlar dispositivos Home Assistant
     private func controlHomeAssistantDevice(device: Device, power: Bool? = nil, r: Int? = nil, g: Int? = nil, b: Int? = nil, brightness: Int? = nil) {
-        guard let haService = homeAssistantService,
-              let config = haService.config else {
-            print("❌ Home Assistant não configurado")
-            return
-        }
+        guard let haService = homeAssistantService, let config = haService.config else { return }
         
         let entityId = device.id.replacingOccurrences(of: "HA_", with: "")
-        let domain = String(entityId.split(separator: ".").first ?? "")
         
-        // Power ON/OFF
         if let power = power {
             let service = power ? "turn_on" : "turn_off"
             haService.controlDevice(entityId: entityId, service: service)
         }
         
-        // Cor RGB (apenas para lights)
         if device.type == .led, let r = r, let g = g, let b = b, let brightness = brightness {
             let serviceData: [String: Any] = [
                 "rgb_color": [r, g, b],
@@ -313,23 +305,16 @@ class DeviceViewModel: ObservableObject {
         }
     }
     
-    // ✅ Sincronizar com Home Assistant
     func syncHomeAssistantDevices(haService: HomeAssistantService) {
         haService.fetchDevices { haDevices in
-            // Remove dispositivos HA antigos
             self.devices.removeAll { $0.id.hasPrefix("HA_") }
-            
-            // Adiciona novos com prefixo
             let updatedDevices = haDevices.map { device -> Device in
                 var d = device
                 d.id = "HA_" + d.id
                 return d
             }
-            
             self.devices.append(contentsOf: updatedDevices)
             self.saveDevices()
-            
-            print("✅ \(haDevices.count) dispositivos sincronizados do Home Assistant")
         }
     }
     
@@ -339,34 +324,18 @@ class DeviceViewModel: ObservableObject {
     }
     
     func saveDevices() {
-        guard let userId = currentUserId else {
-            print("⚠️ Nenhum utilizador logado - dispositivos não guardados")
-            return
-        }
-        
+        guard let userId = currentUserId else { return }
         if let encoded = try? JSONEncoder().encode(devices) {
-            let key = "devices_\(userId)"
-            UserDefaults.standard.set(encoded, forKey: key)
-            print("✅ Dispositivos guardados para utilizador: \(userId)")
+            UserDefaults.standard.set(encoded, forKey: "devices_\(userId)")
         }
     }
     
     private func loadDevices() {
-        guard let userId = currentUserId else {
-            print("⚠️ Nenhum utilizador logado - sem dispositivos para carregar")
-            devices = []
-            return
-        }
-        
+        guard let userId = currentUserId else { return }
         let key = "devices_\(userId)"
-        guard let data = UserDefaults.standard.data(forKey: key),
-              let decoded = try? JSONDecoder().decode([Device].self, from: data) else {
-            print("ℹ️ Nenhum dispositivo guardado para \(userId)")
-            devices = []
-            return
+        if let data = UserDefaults.standard.data(forKey: key),
+           let decoded = try? JSONDecoder().decode([Device].self, from: data) {
+            devices = decoded
         }
-        
-        devices = decoded
-        print("✅ \(decoded.count) dispositivos carregados para \(userId)")
     }
 }

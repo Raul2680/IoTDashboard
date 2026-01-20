@@ -70,11 +70,20 @@ class AutomationEngine: ObservableObject {
         }
     }
     
-    // MARK: - Verificação de Sensores
+    // MARK: - Verificação de Sensores (COM TRAVA DE SPAM)
     func checkSensorAutomations(device: Device) {
         guard let automations = loadAutomations() else { return }
+        let now = Date()
         
         for automation in automations where automation.isEnabled {
+            
+            // ✅ TRAVA DE SEGURANÇA: Se disparou há menos de 60 segundos, ignora para não spamar
+            if let lastTriggered = automation.lastTriggered {
+                if now.timeIntervalSince(lastTriggered) < 60 {
+                    continue
+                }
+            }
+            
             // Temperatura
             if automation.triggerType == .temperature,
                automation.triggerDeviceId == device.id,
@@ -138,6 +147,7 @@ class AutomationEngine: ObservableObject {
         )
         executionHistory.insert(execution, at: 0)
         
+        // Esta função grava a data atual em 'lastTriggered' no UserDefaults
         updateLastTriggered(automationId: automation.id)
         
         if executionHistory.count > 50 {
@@ -147,7 +157,7 @@ class AutomationEngine: ObservableObject {
         saveHistory()
     }
     
-    // MARK: - Execução de Ações (SEM TUYA)
+    // MARK: - Execução de Ações
     private func executeAction(_ action: AutomationAction, automationName: String) -> (success: Bool, message: String) {
         guard let deviceId = action.targetDeviceId,
               let device = deviceViewModel?.devices.first(where: { $0.id == deviceId }) else {
@@ -187,38 +197,28 @@ class AutomationEngine: ObservableObject {
         }
     }
     
-    // MARK: - Comandos para Dispositivos (APENAS ESP32)
+    // MARK: - Comandos para Dispositivos
     private func sendCommand(to device: Device, command: String) {
         let udpService = UDPService(ip: device.ip)
         udpService.sendCommand(command)
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            udpService.stop()
-        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { udpService.stop() }
     }
     
     private func sendColorCommand(to device: Device, color: String) {
         let rgb = hexToRGB(color)
         let udpService = UDPService(ip: device.ip)
         udpService.sendColor(r: rgb.r, g: rgb.g, b: rgb.b, brightness: 100)
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            udpService.stop()
-        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { udpService.stop() }
     }
     
     private func sendBrightnessCommand(to device: Device, brightness: Int) {
         let udpService = UDPService(ip: device.ip)
-        
         if let ledState = device.ledState {
             udpService.sendColor(r: ledState.r, g: ledState.g, b: ledState.b, brightness: brightness)
         } else {
             udpService.sendColor(r: 255, g: 255, b: 255, brightness: brightness)
         }
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            udpService.stop()
-        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { udpService.stop() }
     }
     
     // MARK: - Notificações Push
@@ -251,14 +251,11 @@ class AutomationEngine: ObservableObject {
     private func hexToRGB(_ hex: String) -> (r: Int, g: Int, b: Int) {
         var hexSanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         hexSanitized = hexSanitized.replacingOccurrences(of: "#", with: "")
-        
         var rgb: UInt64 = 0
         Scanner(string: hexSanitized).scanHexInt64(&rgb)
-        
         let r = Int((rgb & 0xFF0000) >> 16)
         let g = Int((rgb & 0x00FF00) >> 8)
         let b = Int(rgb & 0x0000FF)
-        
         return (r, g, b)
     }
     
@@ -282,10 +279,8 @@ class AutomationEngine: ObservableObject {
         }
         
         if automation.locationTriggerType == .enter && didEnter {
-            print("📍 [Automation] Geofence ENTRAR disparada: \(automation.name)")
             executeAutomation(automation)
         } else if automation.locationTriggerType == .exit && !didEnter {
-            print("📍 [Automation] Geofence SAIR disparada: \(automation.name)")
             executeAutomation(automation)
         }
     }
