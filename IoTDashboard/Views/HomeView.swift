@@ -9,7 +9,12 @@ struct HomeView: View {
     @State private var temperatureData: Double = 0
     @State private var updateTimer: Timer?
     
-    // ✅ Agrupamento por divisão
+    // ✅ ESTADOS PARA AS FUNÇÕES DO MENU
+    @State private var deviceToEdit: Device?
+    @State private var showDeleteConfirmation = false
+    @State private var deviceToDelete: Device?
+    
+    // Agrupamento por divisão
     private var devicesByRoom: [String: [Device]] {
         Dictionary(grouping: deviceVM.devices) { device in
             device.room ?? "Sem Divisão"
@@ -22,12 +27,10 @@ struct HomeView: View {
                 // BACKGROUND TEMÁTICO
                 themeManager.currentTheme.deepBaseColor.ignoresSafeArea()
                 
-                // Padrão de ícones
                 if themeManager.currentTheme != .light {
                     BackgroundPatternView(theme: themeManager.currentTheme)
                 }
                 
-                // Gradiente
                 LinearGradient(
                     colors: [themeManager.accentColor.opacity(0.15), .clear],
                     startPoint: .topLeading,
@@ -51,12 +54,26 @@ struct HomeView: View {
             .navigationBarHidden(true)
         }
         .navigationViewStyle(StackNavigationViewStyle())
-        // ✅ EFEITO VISUAL: A Home "afasta-se" quando o overlay (na ContentView) abre
         .blur(radius: deviceVM.showQuickControl ? 10 : 0)
         .scaleEffect(deviceVM.showQuickControl ? 0.95 : 1.0)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: deviceVM.showQuickControl)
         .sheet(isPresented: $showAddDevice) {
             AddDeviceView(deviceVM: deviceVM)
+        }
+        // ✅ Ecrã de Edição (Informações, Renomear, Divisão)
+        .sheet(item: $deviceToEdit) { device in
+            EditDeviceView(device: device, deviceVM: deviceVM)
+        }
+        // ✅ Alerta de Confirmação de Remoção
+        .alert("Remover Equipamento", isPresented: $showDeleteConfirmation) {
+            Button("Cancelar", role: .cancel) { }
+            Button("Remover", role: .destructive) {
+                if let device = deviceToDelete {
+                    deviceVM.removeDevice(device)
+                }
+            }
+        } message: {
+            Text("Tem a certeza que deseja remover '\(deviceToDelete?.name ?? "")'? Esta ação não pode ser desfeita.")
         }
         .onAppear {
             startDataRefresh()
@@ -115,7 +132,7 @@ struct HomeView: View {
             }
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
-        .background(Color(uiColor: .secondarySystemBackground).opacity(0.7)).cornerRadius(14)
+        .background(Color(uiColor: .secondarySystemBackground).opacity(0.7)).cornerRadius(55)
     }
 
     // MARK: - Divisões Dinâmicas
@@ -126,8 +143,9 @@ struct HomeView: View {
                     Text(roomName).font(.system(size: 20, weight: .semibold)).padding(.horizontal, 20)
                         .foregroundColor(themeManager.currentTheme == .light ? .primary : .white)
                     
-                    DeviceGridView(devices: devicesByRoom[roomName] ?? [], deviceVM: deviceVM) { device in
-                        // ✅ ATIVA O OVERLAY GLOBAL NO VIEWMODEL
+                    DeviceGridView(devices: devicesByRoom[roomName] ?? [], deviceVM: deviceVM, onAction: { action, device in
+                        handleMenuAction(action, for: device)
+                    }) { device in
                         deviceVM.selectedDeviceForOverlay = device
                         withAnimation(.spring()) {
                             deviceVM.showQuickControl = true
@@ -135,6 +153,17 @@ struct HomeView: View {
                     }
                 }
             }
+        }
+    }
+    
+    // ✅ LÓGICA DO MENU
+    private func handleMenuAction(_ action: HomeMenuAction, for device: Device) {
+        switch action {
+        case .edit:
+            self.deviceToEdit = device
+        case .delete:
+            self.deviceToDelete = device
+            self.showDeleteConfirmation = true
         }
     }
     
@@ -156,9 +185,13 @@ struct HomeView: View {
 }
 
 // MARK: - COMPONENTES DE SUPORTE
+
+enum HomeMenuAction { case edit, delete }
+
 struct DeviceGridView: View {
     let devices: [Device]
     let deviceVM: DeviceViewModel
+    let onAction: (HomeMenuAction, Device) -> Void
     let onOpenControl: (Device) -> Void
     
     var columns: [GridItem] { [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)] }
@@ -166,16 +199,32 @@ struct DeviceGridView: View {
     var body: some View {
         LazyVGrid(columns: columns, spacing: 12) {
             ForEach(devices) { device in
-                if device.type == .led || device.type == .light {
-                    // ✅ Para LEDs: Toque no card abre a aba (overlay global)
-                    AppleHomeDeviceCard(device: device, deviceVM: deviceVM)
-                        .onTapGesture { onOpenControl(device) }
-                } else {
-                    // ✅ Para Sensores: Mantém a navegação clássica
-                    NavigationLink(destination: DeviceDetailView(deviceVM: deviceVM, device: device)) {
+                Group {
+                    if device.type == .led || device.type == .light {
                         AppleHomeDeviceCard(device: device, deviceVM: deviceVM)
+                            .onTapGesture { onOpenControl(device) }
+                    } else {
+                        NavigationLink(destination: DeviceDetailView(deviceVM: deviceVM, device: device)) {
+                            AppleHomeDeviceCard(device: device, deviceVM: deviceVM)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
-                    .buttonStyle(PlainButtonStyle())
+                }
+                // ✅ MENU DE CONTEXTO (LONG PRESS)
+                .contextMenu {
+                    Button { onAction(.edit, device) } label: {
+                        Label("Informações", systemImage: "info.circle")
+                    }
+                    Button { onAction(.edit, device) } label: {
+                        Label("Renomear", systemImage: "pencil")
+                    }
+                    Button { onAction(.edit, device) } label: {
+                        Label("Alterar Divisão", systemImage: "house.and.flag")
+                    }
+                    Divider()
+                    Button(role: .destructive) { onAction(.delete, device) } label: {
+                        Label("Remover", systemImage: "trash")
+                    }
                 }
             }
         }.padding(.horizontal, 20)
@@ -189,7 +238,6 @@ struct AppleHomeDeviceCard: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // ✅ Toque apenas no ícone para Power ON/OFF
             ZStack {
                 Circle()
                     .fill(device.state && device.isOnline ? Color.yellow.opacity(0.2) : Color.gray.opacity(0.2))
@@ -210,7 +258,7 @@ struct AppleHomeDeviceCard: View {
             Spacer()
         }
         .padding(.horizontal, 14).padding(.vertical, 10).frame(height: 68)
-        .background(Color(uiColor: .secondarySystemBackground).opacity(0.6)).cornerRadius(14)
+        .background(Color(uiColor: .secondarySystemBackground).opacity(0.6)).cornerRadius(40)
     }
     
     private var statusText: String {

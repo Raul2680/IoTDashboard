@@ -49,6 +49,14 @@ class DeviceViewModel: ObservableObject {
             }
         }
     }
+    func updateDeviceDetails(device: Device, newName: String, newRoom: String) {
+        if let index = devices.firstIndex(where: { $0.id == device.id }) {
+            devices[index].name = newName
+            devices[index].room = newRoom
+            saveDevices() // Guarda as alterações no UserDefaults
+            print("✅ Dispositivo atualizado: \(newName) em \(newRoom)")
+        }
+    }
     
     // ✅ NOVO: Refresh para dispositivos Home Assistant
     private func refreshHomeAssistantDevice(at index: Int) {

@@ -21,7 +21,6 @@ struct ContentView: View {
                     LoginView()
                 }
             }
-            // Desfoca e encolhe a app por trás quando o overlay abre
             .blur(radius: deviceVM.showQuickControl ? 15 : 0)
             .scaleEffect(deviceVM.showQuickControl ? 0.95 : 1.0)
             .animation(.spring(response: 0.4, dampingFraction: 0.85), value: deviceVM.showQuickControl)
@@ -29,7 +28,6 @@ struct ContentView: View {
             // MARK: - CAMADA 2: OVERLAY GLOBAL (Cobre a Dock/TabView)
             if authVM.isLoggedIn && deviceVM.showQuickControl, let device = deviceVM.selectedDeviceForOverlay {
                 ZStack {
-                    // Fundo transparente com desfoque real
                     VisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
                         .ignoresSafeArea()
                         .onTapGesture {
@@ -69,7 +67,7 @@ struct QuickControlContent: View {
     @State private var brightness: Double = 0
     @State private var selectedColor: Color = .white
     @State private var showColorPicker = false
-    @State private var showWiFiConfig = false // Para abrir a tua WiFiConfigView
+    @State private var showWiFiConfig = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -88,7 +86,6 @@ struct QuickControlContent: View {
             
             Spacer()
             
-            // Slider Vertical Corrigido com Haptic Feedback
             AppleVerticalSlider(brightness: $brightness) {
                 updateDevice()
             }
@@ -97,7 +94,7 @@ struct QuickControlContent: View {
             
             // MARK: - ZONA INFERIOR (Cores + Definições)
             ZStack(alignment: .bottom) {
-                // Row de Cores Centralizada
+                // Row de Cores - Subi o padding inferior para 90 para não bater no botão
                 HStack(spacing: 15) {
                     ForEach([Color.white, Color.orange, Color.pink, Color.blue], id: \.self) { color in
                         Circle()
@@ -117,9 +114,9 @@ struct QuickControlContent: View {
                         .onTapGesture { showColorPicker = true }
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.bottom, 60)
+                .padding(.bottom, 90) // ✅ Ajustado de 60 para 90 para subir as cores
                 
-                // ✅ ÍCONE DE DEFINIÇÕES (Mais abaixo e à direita conforme pedido)
+                // ÍCONE DE DEFINIÇÕES
                 HStack {
                     Spacer()
                     Button {
@@ -134,14 +131,14 @@ struct QuickControlContent: View {
                     }
                 }
                 .padding(.trailing, 25)
-                .padding(.bottom, 20)
+                .padding(.bottom, 20) // Mantido em 20 para ficar na base
             }
         }
         .onAppear {
             self.brightness = Double(device.ledState?.brightness ?? 0)
         }
         .fullScreenCover(isPresented: $showWiFiConfig) {
-            WiFiConfigView(device: device) // Abre o teu gestor de Bluetooth/WiFi
+            WiFiConfigView(device: device)
         }
         .sheet(isPresented: $showColorPicker) {
             NavigationView {
@@ -157,7 +154,7 @@ struct QuickControlContent: View {
     }
     
     private func updateDevice() {
-        let rgb = selectedColor.getRGBValues() //
+        let rgb = selectedColor.getRGBValues()
         deviceVM.controlLEDviaUDP(
             device: device,
             power: brightness > 0,
@@ -170,7 +167,6 @@ struct QuickControlContent: View {
 }
 
 // MARK: - COMPONENTES AUXILIARES
-
 struct VisualEffectView: UIViewRepresentable {
     var effect: UIVisualEffect?
     func makeUIView(context: Context) -> UIVisualEffectView { UIVisualEffectView(effect: effect) }
@@ -180,7 +176,7 @@ struct VisualEffectView: UIViewRepresentable {
 struct AppleVerticalSlider: View {
     @Binding var brightness: Double
     var onUpdate: () -> Void
-    private let feedback = UIImpactFeedbackGenerator(style: .medium) //
+    private let feedback = UIImpactFeedbackGenerator(style: .medium)
     
     var body: some View {
         GeometryReader { geo in
@@ -191,7 +187,6 @@ struct AppleVerticalSlider: View {
                 RoundedRectangle(cornerRadius: 45)
                     .fill(Color.white.opacity(0.12))
                 
-                // Fix da barra amarela: Rectangle com clipShape
                 Rectangle()
                     .fill(Color.yellow)
                     .frame(width: width, height: max(0, min(height, height * CGFloat(brightness / 100))))
@@ -213,7 +208,6 @@ struct AppleVerticalSlider: View {
                         let percent = 1.0 - Double(v.location.y / height)
                         let newVal = max(0, min(100, percent * 100))
                         
-                        // Feedback tátil nos limites
                         if (newVal == 100 && previous < 100) || (newVal == 0 && previous > 0) {
                             feedback.prepare()
                             feedback.impactOccurred()

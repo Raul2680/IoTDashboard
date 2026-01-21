@@ -1,11 +1,3 @@
-//
-//  EditDeviceView.swift
-//  IoTDashboard
-//
-//  Created by Raul Ferreira on 10/01/2026.
-//
-
-
 import SwiftUI
 
 struct EditDeviceView: View {
@@ -14,75 +6,42 @@ struct EditDeviceView: View {
     @Environment(\.dismiss) var dismiss
     
     @State private var name: String
-    @State private var type: DeviceType
+    @State private var room: String
     
     init(device: Device, deviceVM: DeviceViewModel) {
         self.device = device
         self.deviceVM = deviceVM
         _name = State(initialValue: device.name)
-        _type = State(initialValue: device.type)
+        _room = State(initialValue: device.room ?? "")
     }
     
     var body: some View {
         NavigationView {
             Form {
-                Section {
-                    TextField("Nome", text: $name)
-                    
-                    Picker("Tipo", selection: $type) {
-                        Text("💡 LED").tag(DeviceType.led)
-                        Text("🌡️ Sensor").tag(DeviceType.sensor)
-                        Text("💨 Gás").tag(DeviceType.gas)
-                        Text("🔆 Luz").tag(DeviceType.light)
-                    }
-                } header: {
-                    Text("Informações")
+                Section(header: Text("Informações Gerais")) {
+                    TextField("Nome do Equipamento", text: $name)
+                    TextField("Divisão", text: $room)
                 }
                 
-                Section {
-                    HStack {
-                        Text("IP")
-                        Spacer()
-                        Text(device.ip)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    HStack {
-                        Text("Protocolo")
-                        Spacer()
-                        Text(device.connectionProtocol == .http ? "HTTP" : "UDP")
-                            .foregroundColor(.secondary)
-                    }
-                } header: {
-                    Text("Detalhes")
+                Section(header: Text("Dados Técnicos")) {
+                    LabeledContent("Tipo", value: "\(device.type)")
+                    LabeledContent("IP", value: device.ip)
                 }
             }
-            .navigationTitle("Editar Dispositivo")
+            .navigationTitle("Editar Equipamento")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancelar") {
-                        dismiss()
-                    }
+                    Button("Cancelar") { dismiss() }
                 }
-                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Guardar") {
-                        saveChanges()
+                        deviceVM.updateDeviceDetails(device: device, newName: name, newRoom: room)
+                        dismiss()
                     }
-                    .fontWeight(.semibold)
+                    .bold()
                 }
             }
         }
-    }
-    
-    private func saveChanges() {
-        if let index = deviceVM.devices.firstIndex(where: { $0.id == device.id }) {
-            deviceVM.devices[index].name = name
-            deviceVM.devices[index].type = type
-            deviceVM.saveDevices()
-            print("✅ Dispositivo atualizado: \(name)")
-        }
-        dismiss()
     }
 }
