@@ -1,10 +1,23 @@
 import Foundation
 
-enum DeviceType: String, Codable {
+enum DeviceType: String, Codable, CaseIterable, Identifiable{
     case light = "Luz"
     case sensor = "Sensor"
     case led = "LED"
     case gas = "Gás"
+    
+    // Identifiable permite usar no ForEach sem o 'id: \.self'
+    var id: String { self.rawValue }
+    
+    // Nome amigável para a UI
+    var displayName: String {
+        switch self {
+        case .led: return "💡 LED RGB"
+        case .sensor: return "🌡️ Sensor DHT"
+        case .gas: return "💨 Sensor de Gás"
+        case .light: return "🔆 Luz Inteligente"
+        }
+    }
 }
 
 enum ConnectionProtocol: String, Codable {

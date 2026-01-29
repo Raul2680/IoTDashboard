@@ -228,46 +228,6 @@ struct ProfileView: View {
 }
 
 // MARK: - COMPONENTES E PÁGINAS SECUNDÁRIAS
-
-// APARÊNCIA
-struct AppearanceSettingsView: View {
-    @EnvironmentObject var themeManager: ThemeManager
-    let columns = [GridItem(.flexible()), GridItem(.flexible())]
-
-    var body: some View {
-        ZStack {
-            AppBackgroundView()
-            ScrollView {
-                VStack(spacing: 24) {
-                    VStack(spacing: 8) {
-                        Image(systemName: "paintbrush.fill").font(.system(size: 40)).foregroundColor(themeManager.accentColor).padding().background(Circle().fill(themeManager.accentColor.opacity(0.1)))
-                        Text("Personaliza o Visual").font(.title2.bold())
-                    }.padding(.top)
-
-                    LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(AppTheme.allCases) { theme in
-                            ThemeSelectionCard(theme: theme, isSelected: themeManager.currentTheme == theme)
-                                .onTapGesture { withAnimation(.spring()) { themeManager.currentTheme = theme } }
-                        }
-                    }.padding()
-                }
-            }
-        }.navigationTitle("Aparência")
-    }
-}
-
-struct ThemeSelectionCard: View {
-    let theme: AppTheme; let isSelected: Bool
-    var body: some View {
-        VStack(spacing: 12) {
-            Circle().fill(theme.accentColor).frame(width: 40, height: 40).overlay(Image(systemName: theme.icon).foregroundColor(.white))
-            Text(theme.rawValue).font(.headline).foregroundColor(isSelected ? theme.accentColor : .primary)
-        }
-        .frame(maxWidth: .infinity).padding(.vertical, 20).background(Color(.secondarySystemGroupedBackground).opacity(0.8)).cornerRadius(16)
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(isSelected ? theme.accentColor : Color.clear, lineWidth: 3))
-    }
-}
-
 // NOTIFICAÇÕES
 struct NotificationsSettingsView: View {
     @EnvironmentObject var themeManager: ThemeManager
@@ -431,5 +391,146 @@ struct ChangePasswordView: View {
 
 struct AboutSheet: View {
     @Environment(\.dismiss) var dismiss
-    var body: some View { VStack { Text("IoT Dashboard v3.5"); Button("Fechar") { dismiss() } }.padding() }
+    @EnvironmentObject var themeManager: ThemeManager
+    
+    // URL do teu projeto (substitui pelo teu link real)
+    let githubURL = URL(string: "https://github.com/Raul2680/IoTDashboard")!
+
+    var body: some View {
+        ZStack {
+            themeManager.currentTheme.deepBaseColor.ignoresSafeArea()
+            
+            BackgroundPatternView(theme: themeManager.currentTheme)
+                .opacity(0.3)
+            
+            VStack(spacing: 20) {
+                // Barra superior de fecho
+                Capsule()
+                    .fill(Color.secondary.opacity(0.3))
+                    .frame(width: 40, height: 6)
+                    .padding(.top, 12)
+                
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 25) {
+                        
+                        // Header com Logótipo
+                        headerSection
+                        
+                        // Secção: Tecnologias (Escola)
+                        VStack(alignment: .leading, spacing: 15) {
+                            Text("Tecnologias")
+                                .font(.caption.bold())
+                                .foregroundColor(.gray)
+                                .textCase(.uppercase)
+                                .padding(.leading, 5)
+                            
+                            VStack(spacing: 12) {
+                                technologyRow(icon: "swift", label: "Desenvolvido em Swift", color: .orange)
+                                technologyRow(icon: "iphone", label: "Interface SwiftUI", color: .blue)
+                            }
+                            .padding()
+                            .background(glassBackground)
+                        }
+                        .padding(.horizontal, 25)
+                        
+                        // Secção: Repositório (GitHub)
+                        VStack(alignment: .leading, spacing: 15) {
+                            Text("Código Aberto")
+                                .font(.caption.bold())
+                                .foregroundColor(.gray)
+                                .textCase(.uppercase)
+                                .padding(.leading, 5)
+                            
+                            Link(destination: githubURL) {
+                                HStack {
+                                    Image(systemName: "terminal.fill")
+                                        .foregroundColor(themeManager.accentColor)
+                                    Text("Ver no GitHub")
+                                        .fontWeight(.medium)
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.caption)
+                                }
+                                .padding()
+                                .background(themeManager.accentColor.opacity(0.1))
+                                .cornerRadius(15)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 15)
+                                        .stroke(themeManager.accentColor.opacity(0.3), lineWidth: 1)
+                                )
+                            }
+                        }
+                        .padding(.horizontal, 25)
+                        
+                        // Informação de Versão
+                        VStack(spacing: 4) {
+                            Text("© 2026 Raul - Projeto Académico")
+                                .font(.caption2)
+                                .foregroundColor(.gray)
+                        }
+                        .padding(.top, 10)
+                    }
+                    .padding(.bottom, 100) // Espaço para o botão fixo
+                }
+            }
+            
+            // Botão Fechar Fixo em baixo
+            VStack {
+                Spacer()
+                Button(action: { dismiss() }) {
+                    Text("Concluído")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(themeManager.accentColor)
+                        .clipShape(Capsule())
+                        .shadow(color: themeManager.accentColor.opacity(0.3), radius: 10, y: 5)
+                }
+                .padding(.horizontal, 30)
+                .padding(.bottom, 20)
+            }
+        }
+    }
+
+    // --- Componentes Auxiliares ---
+
+    var headerSection: some View {
+        VStack(spacing: 15) {
+            ZStack {
+                Circle()
+                    .fill(themeManager.accentColor.opacity(0.15))
+                    .frame(width: 90, height: 90)
+                
+                Image(systemName: "cpu.fill")
+                    .font(.system(size: 40))
+                    .foregroundColor(themeManager.accentColor)
+            }
+            
+            VStack(spacing: 5) {
+                Text("IoT Dashboard")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                Text("Versão 3.5.0")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+            }
+        }
+        .padding(.top, 20)
+    }
+
+    func technologyRow(icon: String, label: String, color: Color) -> some View {
+        HStack(spacing: 15) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+                .frame(width: 24)
+            Text(label)
+                .font(.body)
+            Spacer()
+        }
+    }
+
+    var glassBackground: some View {
+        RoundedRectangle(cornerRadius: 20)
+            .fill(themeManager.colorScheme == .light ? Color.black.opacity(0.05) : Color.white.opacity(0.05))
+    }
 }

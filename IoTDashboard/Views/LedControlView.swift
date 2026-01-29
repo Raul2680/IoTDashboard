@@ -9,8 +9,14 @@ struct LedControlView: View {
     @State private var selectedColor: Color = .white
     @State private var showColorPicker = false
     
-    // Cores predefinidas estilo Apple Home
-    private let presetColors: [Color] = [.white, .orange, .pink, .purple, .blue]
+    // Cores predefinidas (Usei cores fixas para garantir o envio correto de RGB)
+    private let presetColors: [Color] = [
+        Color(red: 1, green: 1, blue: 1),       // Branco
+        Color(red: 1, green: 0.64, blue: 0),    // Laranja
+        Color(red: 1, green: 0.0, blue: 0.5),   // Rosa
+        Color(red: 0.5, green: 0.0, blue: 0.5), // Roxo
+        Color(red: 0, green: 0, blue: 1)        // Azul
+    ]
     
     var body: some View {
         ZStack {
@@ -26,7 +32,7 @@ struct LedControlView: View {
                     .frame(width: 36, height: 5)
                     .padding(.top, 8)
                 
-                // Cabeçalho com Nome, Brilho e Botão Power
+                // Cabeçalho
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(device.name)
@@ -39,8 +45,9 @@ struct LedControlView: View {
                     Spacer()
                     
                     Button(action: {
-                        brightness = brightness > 0 ? 0 : 100
-                        updateDevice()
+                        let newBri = brightness > 0 ? 0.0 : 100.0
+                        self.brightness = newBri
+                        updateDevice() // Envia imediato
                     }) {
                         Image(systemName: "power")
                             .font(.system(size: 18, weight: .bold))
@@ -55,25 +62,24 @@ struct LedControlView: View {
                 
                 Spacer()
                 
-                // MARK: - SLIDER VERTICAL (Lâmpada Fixa)
+                // MARK: - SLIDER VERTICAL
                 GeometryReader { geo in
                     ZStack(alignment: .bottom) {
-                        // 1. Calha/Fundo da barra
+                        // Fundo
                         RoundedRectangle(cornerRadius: 45)
                             .fill(Color.white.opacity(0.15))
                         
-                        // 2. Preenchimento (Sobe e desce)
+                        // Preenchimento (Usa a cor selecionada em vez de sempre amarelo)
                         RoundedRectangle(cornerRadius: 45)
-                            .fill(Color.yellow)
-                            .frame(height: geo.size.height * CGFloat(brightness / 100))
+                            .fill(selectedColor.opacity(0.8)) // ✅ A barra agora tem a cor da luz
+                            .frame(height: geo.size.height * CGFloat(max(0, brightness / 100)))
                         
-                        // 3. Ícone FIXO (Fica sempre no mesmo sítio enquanto o preenchimento passa)
+                        // Ícone
                         VStack {
                             Spacer()
                             Image(systemName: brightness > 0 ? "lightbulb.fill" : "lightbulb.slash.fill")
                                 .font(.system(size: 32, weight: .medium))
-                                // O contraste muda conforme o preenchimento amarelo sobe
-                                .foregroundColor(brightness > 15 ? .black.opacity(0.3) : .white.opacity(0.5))
+                                .foregroundColor(brightness > 15 ? .black.opacity(0.5) : .white.opacity(0.5))
                                 .padding(.bottom, 30)
                         }
                     }
@@ -85,6 +91,7 @@ struct LedControlView: View {
                                 self.brightness = max(0, min(100, percent * 100))
                             }
                             .onEnded { _ in
+                                // Só envia quando largar para não entupir a rede
                                 updateDevice()
                             }
                     )
@@ -93,9 +100,8 @@ struct LedControlView: View {
                 
                 Spacer()
                 
-                // MARK: - ROW DE CORES (Estilo Apple Home)
+                // MARK: - CORES
                 HStack(spacing: 15) {
-                    // Círculos de cores predefinidas
                     ForEach(presetColors, id: \.self) { color in
                         Circle()
                             .fill(color)
@@ -111,7 +117,7 @@ struct LedControlView: View {
                             }
                     }
                     
-                    // Último círculo: Seletor de Cores (Ícone Arco-íris)
+                    // Picker Customizado
                     ZStack {
                         Circle()
                             .fill(AngularGradient(gradient: Gradient(colors: [.red, .yellow, .green, .blue, .purple, .red]), center: .center))
@@ -132,8 +138,9 @@ struct LedControlView: View {
         .sheet(isPresented: $showColorPicker) {
             NavigationView {
                 VStack {
-                    ColorPicker("Escolha a cor da luz", selection: $selectedColor, supportsOpacity: false)
+                    ColorPicker("Escolha a cor", selection: $selectedColor, supportsOpacity: false)
                         .padding()
+                        .labelsHidden() // Picker grande
                     Spacer()
                 }
                 .navigationTitle("Cores")
@@ -147,13 +154,22 @@ struct LedControlView: View {
             }
         }
         .onAppear {
+            // ✅ CORREÇÃO CRÍTICA: Carregar a cor atual do dispositivo
             if let state = device.ledState {
                 self.brightness = Double(state.brightness)
+                
+                // Reconstrói a cor a partir do RGB recebido (0-255)
+                self.selectedColor = Color(
+                    red: Double(state.r) / 255.0,
+                    green: Double(state.g) / 255.0,
+                    blue: Double(state.b) / 255.0
+                )
             }
         }
     }
     
     private func updateDevice() {
+        // Converte SwiftUI Color para RGB (0-255)
         let uiColor = UIColor(selectedColor)
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         uiColor.getRed(&r, green: &g, blue: &b, alpha: &a)

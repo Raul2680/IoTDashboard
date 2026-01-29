@@ -12,7 +12,9 @@ struct AutomationsView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                AppBackgroundView()
+                // Fundo dinâmico baseado no tema selecionado
+                themeManager.currentTheme.deepBaseColor.ignoresSafeArea()
+                BackgroundPatternView(theme: themeManager.currentTheme).opacity(0.3)
                 
                 if automationVM.automations.isEmpty {
                     emptyState
@@ -20,7 +22,12 @@ struct AutomationsView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             ForEach(automationVM.automations) { automation in
-                                AutomationCard(automation: automation, vm: automationVM)
+                                // FIX: NavigationLink para abrir a AutomationDetailView
+                                NavigationLink(destination: AutomationDetailView(automation: automation)) {
+                                    AutomationCard(automation: automation, vm: automationVM)
+                                }
+                                .buttonStyle(PlainButtonStyle()) // Mantém as cores originais do card
+                                .transition(.asymmetric(insertion: .scale, removal: .opacity))
                             }
                         }
                         .padding()
@@ -29,15 +36,19 @@ struct AutomationsView: View {
             }
             .navigationTitle("Automações")
             .toolbar {
+                // Botão de Histórico (Esquerda)
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
                         showHistory = true
                     } label: {
                         Image(systemName: "clock.arrow.circlepath")
                             .foregroundColor(.white)
+                            .padding(8)
+                            .background(Circle().fill(Color.white.opacity(0.1)))
                     }
                 }
                 
+                // Botão de Adicionar (Direita)
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         showAddSheet = true
@@ -45,11 +56,13 @@ struct AutomationsView: View {
                         Image(systemName: "plus")
                             .fontWeight(.bold)
                             .foregroundColor(.white)
-                            .padding(8)
+                            .padding(10)
                             .background(Circle().fill(themeManager.accentColor))
+                            .shadow(color: themeManager.accentColor.opacity(0.4), radius: 5)
                     }
                 }
             }
+            // Sheets para as subviews
             .sheet(isPresented: $showAddSheet) {
                 AddAutomationView(automationVM: automationVM)
                     .environmentObject(deviceVM)
@@ -65,6 +78,7 @@ struct AutomationsView: View {
         }
     }
     
+    // Estado vazio quando não há automações criadas
     var emptyState: some View {
         VStack(spacing: 20) {
             Image(systemName: "bolt.badge.clock.fill")
@@ -73,18 +87,18 @@ struct AutomationsView: View {
             
             Text("Sem Automações")
                 .font(.title2.bold())
-                .foregroundColor(.secondary)
+                .foregroundColor(.white)
             
             Text("Crie regras inteligentes para automatizar a sua casa.")
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(.subheadline)
+                .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
         }
     }
 }
 
-// MARK: - Cartão de Automação
+// MARK: - CARTÃO DE AUTOMAÇÃO (CORRIGIDO)
 struct AutomationCard: View {
     let automation: Automation
     @ObservedObject var vm: AutomationViewModel
@@ -94,7 +108,7 @@ struct AutomationCard: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Cabeçalho
+            // Cabeçalho: Ícone, Nome e Toggle
             HStack {
                 ZStack {
                     Circle()
@@ -109,7 +123,7 @@ struct AutomationCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(automation.name)
                         .font(.headline)
-                        .foregroundColor(.primary)
+                        .foregroundColor(.white)
                     
                     HStack(spacing: 4) {
                         Circle()
@@ -119,115 +133,100 @@ struct AutomationCard: View {
                         Text(automation.isEnabled ? "Ativo" : "Pausado")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        
-                        if let lastTriggered = automation.lastTriggered {
-                            Text("• Última execução: \(lastTriggered, style: .relative)")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
                     }
                 }
                 
                 Spacer()
                 
+                // Toggle para ativar/desativar rapidamente
                 Toggle("", isOn: Binding(
                     get: { automation.isEnabled },
                     set: { _ in vm.toggleAutomation(automation) }
                 ))
                 .labelsHidden()
-                .tint(automation.uiColor)
+                .tint(themeManager.accentColor)
+                // Impede que o clique no Toggle abra o NavigationLink
+                .onTapGesture {}
             }
             .padding()
             
-            Divider()
-                .padding(.horizontal)
+            Divider().background(Color.white.opacity(0.1)).padding(.horizontal)
             
-            // Lógica SE → ENTÃO
+            // Lógica SE -> ENTÃO (Visual)
             HStack(spacing: 12) {
-                // SE (Gatilho)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("SE")
-                        .font(.caption.bold())
-                        .foregroundColor(.secondary)
+                        .font(.caption2.bold())
+                        .foregroundColor(themeManager.accentColor)
                     
                     Text(automation.conditionsDescription)
                         .font(.subheadline.bold())
-                        .foregroundColor(.primary)
+                        .foregroundColor(.white)
+                        .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 
-                // Seta
                 Image(systemName: "arrow.right")
-                    .foregroundColor(automation.uiColor)
-                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(themeManager.accentColor.opacity(0.6))
+                    .font(.system(size: 14, weight: .black))
                 
-                // ENTÃO (Ações)
                 VStack(alignment: .trailing, spacing: 4) {
                     Text("ENTÃO")
-                        .font(.caption.bold())
-                        .foregroundColor(.secondary)
+                        .font(.caption2.bold())
+                        .foregroundColor(themeManager.accentColor)
                     
-                    Text("\(automation.actions.count) ação\(automation.actions.count != 1 ? "ões" : "")")
+                    Text("\(automation.actions.count) ações")
                         .font(.subheadline.bold())
-                        .foregroundColor(automation.uiColor)
+                        .foregroundColor(.white)
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .padding()
-            .background(Color.black.opacity(0.03))
-            
-            // Contador de Execuções
-            if automation.executionCount > 0 {
-                Divider()
-                    .padding(.horizontal)
-                
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                        .font(.caption)
-                    
-                    Text("Executada \(automation.executionCount) vez\(automation.executionCount != 1 ? "es" : "")")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Spacer()
-                    
-                    Button(role: .destructive) {
-                        showDeleteAlert = true
-                    } label: {
-                        Image(systemName: "trash")
-                            .foregroundColor(.red)
-                            .font(.caption)
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
+            .background(Color.white.opacity(0.04))
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(isSelectedBorder, lineWidth: 1)
+        )
+        .opacity(automation.isEnabled ? 1.0 : 0.6)
+        
+        // --- FUNCIONALIDADE: SEGURAR PARA APAGAR ---
+        .contextMenu {
+            Button(role: .destructive) {
+                showDeleteAlert = true
+            } label: {
+                Label("Apagar Automação", systemImage: "trash")
             }
         }
-        .background(themeManager.currentTheme == .light ? Color.white : Color.white.opacity(0.08))
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
-        .opacity(automation.isEnabled ? 1.0 : 0.6)
+        // ------------------------------------------
+        
         .alert("Remover Automação", isPresented: $showDeleteAlert) {
             Button("Cancelar", role: .cancel) {}
             Button("Remover", role: .destructive) {
-                vm.deleteAutomation(automation)
+                withAnimation {
+                    vm.deleteAutomation(automation)
+                }
             }
         } message: {
-            Text("Tem certeza que deseja remover '\(automation.name)'?")
+            Text("Tens a certeza que queres apagar '\(automation.name)'?")
         }
+    }
+    
+    private var isSelectedBorder: Color {
+        automation.isEnabled ? themeManager.accentColor.opacity(0.3) : Color.white.opacity(0.1)
     }
     
     private func iconForTrigger(_ type: AutomationTriggerType) -> String {
         switch type {
         case .time: return "clock.fill"
-        case .temperature: return "thermometer"
-        case .humidity: return "humidity"
-        case .gasDetected: return "exclamationmark.triangle.fill"
-        case .deviceState: return "lightbulb.fill"
+        case .temperature: return "thermometer.medium"
         case .location: return "location.fill"
         case .sunset: return "sunset.fill"
-        case .sunrise: return "sunrise.fill"
+        default: return "bolt.fill"
         }
     }
 }
