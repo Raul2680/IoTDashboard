@@ -4,30 +4,43 @@ struct BackgroundPatternView: View {
     let theme: AppTheme
     
     var body: some View {
-        GeometryReader { geo in
-            let size = geo.size // Extraído para facilitar a inferência de tipo
-            
-            ZStack {
-                if let imageName = theme.backgroundImageName {
-                    Image(imageName)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: size.width, height: size.height)
-                        .clipped()
-                        .overlay(theme.deepBaseColor.opacity(0.4))
+        ZStack {
+            // CASO 1: O tema tem uma imagem de fundo (ex: "Premium", "Metal")
+            if let imageName = theme.backgroundImageName {
+                Image(imageName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .ignoresSafeArea()
+                    .overlay(theme.deepBaseColor.opacity(0.4)) // Escurece a imagem para contraste
+            }
+            // CASO 2: O tema usa ícones (ex: "Oceano", "Cyberpunk") - Usa Canvas para performance
+            else {
+                Canvas { context, size in
+                    let spacing: CGFloat = 60
+                    // Calcula quantas colunas e linhas cabem
+                    for row in 0...Int(size.height / spacing) {
+                        for col in 0...Int(size.width / spacing) {
+                            // Escolhe um ícone aleatório do tema
+                            if let icon = theme.patternIcons.randomElement() {
+                                let point = CGPoint(x: CGFloat(col) * spacing, y: CGFloat(row) * spacing)
+                                
+                                // Define opacidade baixa para ser subtil
+                                context.opacity = 0.15
+                                
+                                // Resolve o texto/imagem antes de desenhar (Correção do erro anterior)
+                                let text = Text(Image(systemName: icon)).font(.title3)
+                                let resolved = context.resolve(text)
+                                
+                                context.draw(resolved, at: point)
+                            }
+                        }
+                    }
                 }
-                else if theme == .goldLines {
-                    TopographyPathView(color: theme.accentColor.opacity(0.2))
-                        .rotationEffect(.degrees(-15))
-                        .scaleEffect(1.5)
-                }
-                else {
-                    // Passamos apenas o tamanho necessário para a Grid
-                    GridPatternView(theme: theme, viewSize: size)
-                }
+                .foregroundStyle(theme.accentColor) // Pinta os ícones com a cor do tema
+                .allowsHitTesting(false) // Garante que não bloqueia toques na Home
+                .ignoresSafeArea()
             }
         }
-        .ignoresSafeArea()
     }
 }
 

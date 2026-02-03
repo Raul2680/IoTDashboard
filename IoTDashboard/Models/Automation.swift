@@ -2,23 +2,23 @@ import Foundation
 import SwiftUI
 import CoreLocation
 
-// MARK: - Tipos de Gatilhos
+// MARK: - Tipos de Gatilhos (Atualizado para coincidir com a UI)
 enum AutomationTriggerType: String, Codable, CaseIterable {
     case time = "Horário"
     case temperature = "Temperatura"
     case humidity = "Humidade"
-    case gasDetected = "Gás Detetado"
-    case deviceState = "Estado do Dispositivo"
+    case gas = "Gás" // ✅ Alterado de gasDetected para gas
     case location = "Localização"
+    case deviceState = "Estado do Dispositivo"
     case sunset = "Pôr do Sol"
     case sunrise = "Nascer do Sol"
 }
 
-// MARK: - Tipos de Ações
+// MARK: - Tipos de Ações (Atualizado para coincidir com a UI)
 enum AutomationActionType: String, Codable, CaseIterable {
     case turnOn = "Ligar"
     case turnOff = "Desligar"
-    case setColor = "Mudar Cor"
+    case setRGB = "Cor LED" // ✅ Alterado de setColor para setRGB
     case setBrightness = "Ajustar Brilho"
     case notify = "Notificar"
     case sendEmail = "Enviar Email"
@@ -32,20 +32,20 @@ enum ComparisonOperator: String, Codable, CaseIterable {
     case notEquals = "≠"
 }
 
-// MARK: - Estrutura de Ação (permite múltiplas ações)
+// MARK: - Estrutura de Ação
 struct AutomationAction: Identifiable, Codable {
     var id: String = UUID().uuidString
     var type: AutomationActionType
     var targetDeviceId: String?
-    var value: String? // Ex: cor RGB, brilho, mensagem de notificação
+    var value: String?
 }
 
 // MARK: - Estrutura de Localização
 struct AutomationLocation: Codable {
     var latitude: Double
     var longitude: Double
-    var radius: Double // Metros (ex: 100m)
-    var name: String // Ex: "Casa", "Trabalho"
+    var radius: Double
+    var name: String
     
     func distance(from location: CLLocation) -> Double {
         let center = CLLocation(latitude: latitude, longitude: longitude)
@@ -76,21 +76,17 @@ struct Automation: Identifiable, Codable {
     
     // GATILHO
     var triggerType: AutomationTriggerType
-    
-    // Gatilho: Horário
     var triggerTime: Date?
-    var triggerDays: [Int]? // 0=Domingo, 1=Segunda, etc.
+    var triggerDays: [Int]?
     
-    // Gatilho: Sensor (Temperatura/Humidade)
     var triggerDeviceId: String?
     var comparisonOperator: ComparisonOperator?
-    var triggerValue: Double? // Ex: 25.0 para temperatura
+    var triggerValue: Double?
     
-    // Gatilho: Localização
     var triggerLocation: AutomationLocation?
-    var locationTriggerType: LocationTriggerType? // Entrar ou Sair
+    var locationTriggerType: LocationTriggerType?
     
-    // AÇÕES (Múltiplas)
+    // AÇÕES
     var actions: [AutomationAction] = []
     
     // EXECUÇÃO
@@ -131,8 +127,8 @@ struct Automation: Identifiable, Codable {
             let val = triggerValue ?? 0
             return "Humidade \(op) \(String(format: "%.0f", val))%"
             
-        case .gasDetected:
-            return "Gás detetado"
+        case .gas: // ✅ Atualizado
+            return "Deteção de Gás"
             
         case .location:
             if let loc = triggerLocation {
@@ -153,9 +149,7 @@ struct Automation: Identifiable, Codable {
     }
     
     var actionsDescription: String {
-        if actions.isEmpty {
-            return "Sem ações"
-        }
+        if actions.isEmpty { return "Sem ações" }
         return actions.map { $0.type.rawValue }.joined(separator: ", ")
     }
     
@@ -165,13 +159,11 @@ struct Automation: Identifiable, Codable {
     }
 }
 
-// MARK: - Tipo de Gatilho de Localização
 enum LocationTriggerType: String, Codable, CaseIterable {
     case enter = "Entrar"
     case exit = "Sair"
 }
 
-// MARK: - Helper para Arrays
 extension Array {
     subscript(safe index: Int) -> Element? {
         return indices.contains(index) ? self[index] : nil

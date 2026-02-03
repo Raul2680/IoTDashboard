@@ -2,7 +2,9 @@ import SwiftUI
 
 struct RegisterView: View {
     @EnvironmentObject var authVM: AuthViewModel
+    @EnvironmentObject var themeManager: ThemeManager // Sincronização com o tema
     @Environment(\.dismiss) var dismiss
+    
     @State private var username = ""
     @State private var password = ""
     @State private var confirm = ""
@@ -10,233 +12,182 @@ struct RegisterView: View {
     @State private var error = ""
     @State private var isPasswordVisible = false
     @State private var isConfirmVisible = false
+    @State private var isLoading = false
     
     var body: some View {
         ZStack {
-            // Gradiente de fundo (rosa/roxo)
+            // 1. Fundo Base do Tema (Sincronizado com Home/Login)
+            themeManager.currentTheme.deepBaseColor.ignoresSafeArea()
+            
+            // 2. Padrão Geométrico
+            if themeManager.currentTheme != .light {
+                BackgroundPatternView(theme: themeManager.currentTheme)
+                    .opacity(0.3)
+            }
+            
+            // 3. Brilho de Acento Superior (Vindo do estilo da HomeView)
             LinearGradient(
-                colors: [
-                    Color(red: 0.8, green: 0.3, blue: 0.9),
-                    Color(red: 0.9, green: 0.4, blue: 0.8),
-                    Color(red: 1.0, green: 0.5, blue: 0.7)
-                ],
+                colors: [themeManager.accentColor.opacity(0.15), .clear],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            ).ignoresSafeArea()
             
-            // Círculos decorativos
-            Circle()
-                .fill(Color.white.opacity(0.1))
-                .frame(width: 250, height: 250)
-                .offset(x: -120, y: -250)
-            
-            Circle()
-                .fill(Color.white.opacity(0.1))
-                .frame(width: 180, height: 180)
-                .offset(x: 140, y: 350)
-            
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(spacing: 30) {
-                    Spacer()
-                        .frame(height: 40)
+                    Spacer().frame(height: 40)
                     
-                    // Ícone e título
+                    // Header com Ícone Glass
                     VStack(spacing: 16) {
                         ZStack {
                             Circle()
-                                .fill(Color.white.opacity(0.2))
+                                .fill(themeManager.accentColor.opacity(0.1))
                                 .frame(width: 80, height: 80)
+                                .overlay(Circle().stroke(themeManager.accentColor.opacity(0.2), lineWidth: 1))
                             
                             Image(systemName: "person.badge.plus.fill")
-                                .font(.system(size: 40))
-                                .foregroundColor(.white)
+                                .font(.system(size: 35))
+                                .foregroundColor(themeManager.accentColor)
                         }
-                        .shadow(color: Color.black.opacity(0.2), radius: 15, x: 0, y: 8)
+                        .shadow(color: themeManager.accentColor.opacity(0.3), radius: 15, x: 0, y: 8)
                         
                         Text("Criar Conta")
-                            .font(.system(size: 32, weight: .bold))
-                            .foregroundColor(.white)
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .foregroundColor(themeManager.currentTheme == .light ? .primary : .white)
                         
                         Text("Começa a monitorizar os teus sensores")
                             .font(.subheadline)
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                     }
-                    .padding(.bottom, 10)
                     
-                    // Campos de registo
-                    VStack(spacing: 16) {
-                        // Campo Usuário
-                        HStack {
-                            Image(systemName: "person.fill")
-                                .foregroundColor(.white.opacity(0.7))
-                                .frame(width: 20)
-                            
-                            TextField("", text: $username, prompt: Text("Utilizador")
-                                .foregroundColor(.white.opacity(0.5)))
-                            .foregroundColor(.white)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        }
-                        .padding()
-                        .background(Color.white.opacity(0.2))
-                        .cornerRadius(16)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                        )
+                    // Card de Registo Estilo Glass
+                    VStack(spacing: 18) {
+                        // Campo Email/User
+                        customInputField(icon: "person.fill", placeholder: "Utilizador", text: $username)
                         
                         // Campo Senha
-                        HStack {
-                            Image(systemName: "lock.fill")
-                                .foregroundColor(.white.opacity(0.7))
-                                .frame(width: 20)
-                            
-                            if isPasswordVisible {
-                                TextField("", text: $password, prompt: Text("Senha")
-                                    .foregroundColor(.white.opacity(0.5)))
-                                .foregroundColor(.white)
-                            } else {
-                                SecureField("", text: $password, prompt: Text("Senha")
-                                    .foregroundColor(.white.opacity(0.5)))
-                                .foregroundColor(.white)
-                            }
-                            
-                            Button(action: { isPasswordVisible.toggle() }) {
-                                Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
-                                    .foregroundColor(.white.opacity(0.7))
-                            }
-                        }
-                        .padding()
-                        .background(Color.white.opacity(0.2))
-                        .cornerRadius(16)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                        )
+                        customPasswordField(icon: "lock.fill", placeholder: "Senha", text: $password, isVisible: $isPasswordVisible)
                         
                         // Campo Confirmar Senha
-                        HStack {
-                            Image(systemName: "lock.shield.fill")
-                                .foregroundColor(.white.opacity(0.7))
-                                .frame(width: 20)
-                            
-                            if isConfirmVisible {
-                                TextField("", text: $confirm, prompt: Text("Confirmar senha")
-                                    .foregroundColor(.white.opacity(0.5)))
-                                .foregroundColor(.white)
-                            } else {
-                                SecureField("", text: $confirm, prompt: Text("Confirmar senha")
-                                    .foregroundColor(.white.opacity(0.5)))
-                                .foregroundColor(.white)
-                            }
-                            
-                            Button(action: { isConfirmVisible.toggle() }) {
-                                Image(systemName: isConfirmVisible ? "eye.slash.fill" : "eye.fill")
-                                    .foregroundColor(.white.opacity(0.7))
-                            }
-                        }
-                        .padding()
-                        .background(Color.white.opacity(0.2))
-                        .cornerRadius(16)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                        )
+                        customPasswordField(icon: "lock.shield.fill", placeholder: "Confirmar senha", text: $confirm, isVisible: $isConfirmVisible)
                         
-                        // Mensagem de erro
-                        if !error.isEmpty {
-                            HStack {
-                                Image(systemName: "exclamationmark.circle.fill")
-                                Text(error)
-                            }
-                            .font(.caption)
-                            .foregroundColor(.red)
-                            .padding(.horizontal)
-                            .padding(.vertical, 8)
-                            .background(Color.white.opacity(0.9))
-                            .cornerRadius(12)
-                            .transition(.opacity)
+                        // Mensagens de Feedback (Erro/Sucesso)
+                        if !error.isEmpty || success {
+                            feedbackMessage
                         }
                         
-                        // Mensagem de sucesso
-                        if success {
+                        // Botão Registrar Premium
+                        Button(action: handleRegister) {
                             HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                Text("Conta criada! Faz login.")
+                                if isLoading {
+                                    ProgressView().tint(.white)
+                                } else {
+                                    Text("Registrar").bold()
+                                    Image(systemName: "checkmark.circle.fill")
+                                }
                             }
-                            .font(.caption)
-                            .foregroundColor(.green)
-                            .padding(.horizontal)
-                            .padding(.vertical, 8)
-                            .background(Color.white.opacity(0.9))
-                            .cornerRadius(12)
-                            .transition(.opacity)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 54)
+                            .background(themeManager.accentColor.gradient)
+                            .foregroundColor(.white)
+                            .cornerRadius(16)
+                            .shadow(color: themeManager.accentColor.opacity(0.3), radius: 8, y: 4)
                         }
+                        .disabled(isLoading)
+                        .padding(.top, 10)
                     }
-                    .padding(.horizontal, 30)
+                    .padding(25)
+                    .background(themeManager.currentTheme == .light ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
+                    .cornerRadius(28)
+                    .overlay(RoundedRectangle(cornerRadius: 28).stroke(Color.white.opacity(0.1), lineWidth: 0.5))
+                    .padding(.horizontal, 25)
                     
-                    // Botão Registrar
-                    Button(action: handleRegister) {
-                        HStack {
-                            Text("Registrar")
-                                .font(.headline)
-                            Image(systemName: "checkmark.circle.fill")
-                        }
-                        .foregroundColor(Color(red: 0.8, green: 0.3, blue: 0.9))
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.white)
-                        .cornerRadius(16)
-                        .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
-                    }
-                    .padding(.horizontal, 30)
-                    .padding(.top, 10)
-                    
-                    // Link voltar ao login
+                    // Botão Voltar
                     Button(action: { dismiss() }) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: 6) {
                             Image(systemName: "chevron.left")
                             Text("Já tens conta? Entrar")
-                                .fontWeight(.semibold)
                         }
-                        .font(.subheadline)
-                        .foregroundColor(.white)
+                        .font(.subheadline.bold())
+                        .foregroundColor(themeManager.accentColor)
                     }
                     .padding(.top, 10)
-                    
-                    Spacer()
                 }
+                .padding(.bottom, 20)
             }
         }
         .navigationBarHidden(true)
     }
     
+    // MARK: - Componentes Customizados
+    
+    private func customInputField(icon: String, placeholder: String, text: Binding<String>) -> some View {
+        HStack {
+            Image(systemName: icon).foregroundColor(themeManager.accentColor).frame(width: 20)
+            TextField("", text: text, prompt: Text(placeholder).foregroundColor(.gray.opacity(0.5)))
+                .foregroundColor(.white)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
+        .padding()
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(14)
+    }
+    
+    private func customPasswordField(icon: String, placeholder: String, text: Binding<String>, isVisible: Binding<Bool>) -> some View {
+        HStack {
+            Image(systemName: icon).foregroundColor(themeManager.accentColor).frame(width: 20)
+            if isVisible.wrappedValue {
+                TextField("", text: text, prompt: Text(placeholder).foregroundColor(.gray.opacity(0.5)))
+            } else {
+                SecureField("", text: text, prompt: Text(placeholder).foregroundColor(.gray.opacity(0.5)))
+            }
+            Button { isVisible.wrappedValue.toggle() } label: {
+                Image(systemName: isVisible.wrappedValue ? "eye.slash.fill" : "eye.fill").foregroundColor(.gray)
+            }
+        }
+        .padding()
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(14)
+    }
+    
+    private var feedbackMessage: some View {
+        HStack {
+            Image(systemName: success ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+            Text(success ? "Conta criada! Faz login." : error)
+        }
+        .font(.caption.bold())
+        .foregroundColor(success ? .green : .red)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(success ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
+        .cornerRadius(10)
+    }
+
+    // MARK: - Lógica de Registro
     private func handleRegister() {
-        withAnimation {
-            error = ""
-            success = false
-            
-            if password != confirm {
-                error = "As senhas não coincidem"
-                return
-            }
-            
-            if username.isEmpty || password.count < 4 {
-                error = "Preencha todos os campos (senha min. 4 caracteres)"
-                return
-            }
-            
-            authVM.register(username: username, password: password) { success, errorMessage in
-                if success {
-                    self.success = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        dismiss()
-                    }
-                } else {
-                    self.error = errorMessage ?? "Erro ao criar conta"
-                }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        
+        guard password == confirm else {
+            withAnimation { error = "As senhas não coincidem" }
+            return
+        }
+        
+        guard !username.isEmpty && password.count >= 4 else {
+            withAnimation { error = "Preencha tudo (Senha min. 4 caracteres)" }
+            return
+        }
+        
+        isLoading = true
+        error = ""
+        
+        authVM.register(username: username, password: password) { success, errorMessage in
+            isLoading = false
+            if success {
+                self.success = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { dismiss() }
+            } else {
+                withAnimation { self.error = errorMessage ?? "Erro ao criar conta" }
             }
         }
     }

@@ -1,13 +1,17 @@
 import SwiftUI
+import FirebaseFirestore
 
+// MARK: - VIEW PRINCIPAL
 struct AddDeviceView: View {
     @Environment(\.dismiss) var dismiss
-    @EnvironmentObject var themeManager: ThemeManager // Adicionado para consistência
+    @EnvironmentObject var themeManager: ThemeManager
     @ObservedObject var deviceVM: DeviceViewModel
     
+    // Serviços de Descoberta Reais
     @StateObject private var bonjourService = BonjourService()
     @StateObject private var ssdpService = SSDPService()
     
+    // Estados de UI
     @State private var isScanning = false
     @State private var manualIP = ""
     @State private var manualName = ""
@@ -18,17 +22,23 @@ struct AddDeviceView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                // 1. Fundo Premium dinâmico
+                // Fundo Base do Tema Selecionado
                 themeManager.currentTheme.deepBaseColor.ignoresSafeArea()
+                
+                // Padrão Geométrico
                 BackgroundPatternView(theme: themeManager.currentTheme)
                     .opacity(0.3)
                 
-                ScrollView {
+                ScrollView(showsIndicators: false) {
                     VStack(spacing: 24) {
-                        // Header de Scan com animação
-                        scanHeader
                         
-                        // Resultados Bonjour
+                        // 1. HEADER DE SCAN
+                        scanHeaderSection
+                        
+                        // 2. SIMULADOR (MODO ESCOLA)
+                        simulatorSection
+                        
+                        // 3. RESULTADOS BONJOUR
                         if !bonjourService.discoveredIPs.isEmpty {
                             discoverySection(
                                 title: "Bonjour / mDNS",
@@ -37,15 +47,10 @@ struct AddDeviceView: View {
                             )
                         }
                         
-                        // Resultados SSDP
-                        if !ssdpService.foundDevices.isEmpty {
-                            ssdpSection
-                        }
-                        
-                        // Adicionar Manual (Card Glass)
+                        // 4. ADIÇÃO MANUAL
                         manualAddSection
                         
-                        // Lista de já adicionados
+                        // 5. DISPOSITIVOS EXISTENTES
                         if !deviceVM.devices.isEmpty {
                             existingDevicesSection
                         }
@@ -63,17 +68,87 @@ struct AddDeviceView: View {
                 }
             }
             .onAppear { startScan() }
-            .sheet(isPresented: $showEditSheet) {
-                if let device = deviceToEdit {
-                    EditDeviceView(device: device, deviceVM: deviceVM)
-                }
-            }
         }
     }
+}
+
+// MARK: - LÓGICA DE FUNCIONAMENTO (CORREÇÕES DA IMAGEM)
+extension AddDeviceView {
     
-    // MARK: - Componentes de UI (Estilo Premium)
+    private func startScan() {
+        isScanning = true
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        bonjourService.start()
+        ssdpService.startDiscovery()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { isScanning = false }
+    }
     
-    private var scanHeader: some View {
+    // ✅ CORREÇÃO: connectionProtocol adicionado e timestamp convertido para Int
+    private func addSimulatedDevice() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let types: [DeviceType] = [.sensor, .led, .gas]
+        let randomType = types.randomElement() ?? .sensor
+        
+        var mockDevice = Device(
+            id: UUID().uuidString,
+            name: "Simulado \(randomType.displayName)",
+            type: randomType,
+            ip: "127.0.0.1",
+            connectionProtocol: .http, // Fix do erro de parâmetro na imagem
+            isOnline: true
+        )
+        
+        if randomType == .sensor {
+            mockDevice.sensorData = SensorData(
+                temperature: Double.random(in: 20...26),
+                humidity: Double.random(in: 45...55),
+                timestamp: Int(Date().timeIntervalSince1970) // Fix do erro de tipo na imagem
+            )
+        }
+        
+        deviceVM.devices.append(mockDevice)
+        dismiss()
+    }
+
+    // ✅ CORREÇÃO: connectionProtocol adicionado no modo manual
+    private func addManualDevice() {
+        let newDevice = Device(
+            id: UUID().uuidString,
+            name: manualName,
+            type: selectedType,
+            ip: manualIP,
+            connectionProtocol: selectedType == .led ? .udp : .http, // Fix do erro de parâmetro na imagem
+            isOnline: true
+        )
+        deviceVM.devices.append(newDevice)
+        dismiss()
+    }
+
+    // ✅ CORREÇÃO: connectionProtocol adicionado no modo auto
+    private func testAndAddDevice(ip: String) {
+        let newDevice = Device(
+            id: UUID().uuidString,
+            name: "ESP32 Auto",
+            type: .sensor,
+            ip: ip,
+            connectionProtocol: .http, // Fix do erro de parâmetro na imagem
+            isOnline: true
+        )
+        deviceVM.devices.append(newDevice)
+    }
+
+    private func isValidIP(_ ip: String) -> Bool {
+        let parts = ip.components(separatedBy: ".")
+        guard parts.count == 4 else { return false }
+        return parts.allSatisfy { Int($0) != nil }
+    }
+}
+
+// MARK: - COMPONENTES DE UI (ESTRUTURA COMPLETA)
+
+extension AddDeviceView {
+    
+    private var scanHeaderSection: some View {
         VStack(spacing: 16) {
             ZStack {
                 Circle()
@@ -100,224 +175,155 @@ struct AddDeviceView: View {
         .padding(.vertical)
     }
     
-    private func discoverySection(title: String, icon: String, ips: [String]) -> some View {
+    private var simulatorSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: icon)
-                .font(.caption.bold())
-                .foregroundColor(.gray)
+            Label("Modo Escola (Simulador)", systemImage: "flask.fill")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(.orange)
                 .textCase(.uppercase)
+                .padding(.leading, 4)
             
-            VStack(spacing: 0) {
-                ForEach(ips, id: \.self) { ip in
-                    deviceDiscoveryRow(ip: ip, subtitle: "Protocolo mDNS")
-                    if ip != ips.last { Divider().background(Color.white.opacity(0.1)) }
+            Button(action: addSimulatedDevice) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Simular Hardware ESP32")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        Text("Gera dados fictícios (IP 127.0.0.1)")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                    Spacer()
+                    Image(systemName: "plus.viewfinder")
+                        .font(.title2)
+                        .foregroundColor(.orange)
                 }
+                .padding()
+                .background(Color.orange.opacity(0.15))
+                .cornerRadius(16)
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.orange.opacity(0.3), lineWidth: 1))
             }
-            .background(Color.white.opacity(0.05))
-            .cornerRadius(16)
         }
-    }
-    
-    private var ssdpSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("SSDP / UPnP", systemImage: "network")
-                .font(.caption.bold())
-                .foregroundColor(.gray)
-                .textCase(.uppercase)
-            
-            VStack(spacing: 0) {
-                ForEach(ssdpService.foundDevices) { device in
-                    deviceDiscoveryRow(ip: device.ip, subtitle: device.server ?? "Dispositivo IoT")
-                    if device.id != ssdpService.foundDevices.last?.id { Divider().background(Color.white.opacity(0.1)) }
-                }
-            }
-            .background(Color.white.opacity(0.05))
-            .cornerRadius(16)
-        }
-    }
-    
-    private func deviceDiscoveryRow(ip: String, subtitle: String) -> some View {
-        HStack {
-            VStack(alignment: .leading) {
-                Text(ip).font(.headline).foregroundColor(.white)
-                Text(subtitle).font(.caption).foregroundColor(.gray)
-            }
-            Spacer()
-            Button("Adicionar") { testAndAddDevice(ip: ip) }
-                .buttonStyle(.bordered)
-                .tint(themeManager.accentColor)
-                .controlSize(.small)
-        }
-        .padding()
     }
     
     private var manualAddSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Adição Manual")
-                .font(.caption.bold())
-                .foregroundColor(.gray)
+        VStack(alignment: .leading, spacing: 16) {
+            Label("Adição Manual", systemImage: "plus.circle.fill")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(.secondary)
                 .textCase(.uppercase)
+                .padding(.leading, 4)
             
-            VStack(spacing: 16) {
-                TextField("Nome do Dispositivo", text: $manualName)
-                    .padding().background(Color.white.opacity(0.05)).cornerRadius(10)
-                
-                TextField("IP (ex: 192.168.1.100)", text: $manualIP)
-                    .padding().background(Color.white.opacity(0.05)).cornerRadius(10)
-                    .keyboardType(.numbersAndPunctuation)
-                
-                Picker("Tipo", selection: $selectedType) {
-                    ForEach(DeviceType.allCases) { type in
-                        Text(type.displayName)
-                            .tag(type) // Importante para o binding do @State funcionar
+            ManualAddContainer {
+                VStack(spacing: 18) {
+                    CustomInputField(icon: "tag.fill", placeholder: "Nome do Dispositivo", text: $manualName)
+                    CustomInputField(icon: "network", placeholder: "Endereço IP", text: $manualIP, keyboard: .numbersAndPunctuation)
+                    
+                    HardwarePickerMenu(selectedType: $selectedType)
+                    
+                    Button(action: {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        addManualDevice()
+                    }) {
+                        Text("Configurar Dispositivo")
+                            .bold()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background {
+                                if manualName.isEmpty || !isValidIP(manualIP) {
+                                    Color.gray.opacity(0.3)
+                                } else {
+                                    Rectangle().fill(themeManager.accentColor.gradient)
+                                }
+                            }
+                            .foregroundColor(.white)
+                            .cornerRadius(14)
                     }
+                    .disabled(manualName.isEmpty || !isValidIP(manualIP))
                 }
-                .pickerStyle(.segmented)
-                
-                Button(action: addManualDevice) {
-                    Text("Configurar Dispositivo")
-                        .bold()
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(themeManager.accentColor)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                }
-                .disabled(manualName.isEmpty || !isValidIP(manualIP))
-                .opacity(manualName.isEmpty || !isValidIP(manualIP) ? 0.5 : 1)
             }
-            .padding()
-            .background(Color.white.opacity(0.05))
-            .cornerRadius(20)
         }
     }
-    
+
+    private func discoverySection(title: String, icon: String, ips: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: icon).font(.caption.bold()).foregroundColor(.gray)
+            VStack(spacing: 0) {
+                ForEach(ips, id: \.self) { ip in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(ip).font(.headline).foregroundColor(.white)
+                            Text("Protocolo mDNS").font(.caption).foregroundColor(.gray)
+                        }
+                        Spacer()
+                        Button("Add") { testAndAddDevice(ip: ip) }
+                            .buttonStyle(.bordered)
+                            .tint(themeManager.accentColor)
+                    }
+                    .padding()
+                    if ip != ips.last { Divider().background(Color.white.opacity(0.1)) }
+                }
+            }
+            .background(Color.white.opacity(0.05)).cornerRadius(16)
+        }
+    }
+
     private var existingDevicesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Na sua rede (\(deviceVM.devices.count))")
-                .font(.caption.bold())
-                .foregroundColor(.gray)
-            
+            Text("Dispositivos na Rede").font(.caption.bold()).foregroundColor(.gray)
             VStack(spacing: 0) {
                 ForEach(deviceVM.devices) { device in
                     HStack {
-                        Image(systemName: iconName(for: device.type))
-                            .foregroundColor(themeManager.accentColor)
-                            .frame(width: 30)
-                        
+                        Image(systemName: device.type == .sensor ? "thermometer.medium" : "lightbulb.fill")
+                            .foregroundColor(themeManager.accentColor).frame(width: 30)
                         VStack(alignment: .leading) {
-                            Text(device.name).foregroundColor(.white).font(.subheadline.bold())
-                            Text(device.ip).foregroundColor(.gray).font(.caption)
+                            Text(device.name).font(.subheadline.bold()).foregroundColor(.white)
+                            Text(device.ip).font(.caption).foregroundColor(.gray)
                         }
                         Spacer()
-                        Circle()
-                            .fill(device.isOnline ? Color.green : Color.red)
-                            .frame(width: 8, height: 8)
+                        Circle().fill(device.isOnline ? .green : .red).frame(width: 8, height: 8)
                     }
                     .padding()
-                    .onTapGesture {
-                        deviceToEdit = device
-                        showEditSheet = true
-                    }
-                    
-                    if device.id != deviceVM.devices.last?.id { Divider().background(Color.white.opacity(0.1)) }
                 }
             }
-            .background(Color.white.opacity(0.05))
-            .cornerRadius(16)
+            .background(Color.white.opacity(0.05)).cornerRadius(16)
         }
     }
+}
 
-    // MARK: - Funções de Lógica (Mantidas)
-    
-    private func startScan() {
-        isScanning = true
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        bonjourService.discoveredIPs.removeAll()
-        ssdpService.foundDevices.removeAll()
-        bonjourService.start()
-        ssdpService.startDiscovery()
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-            isScanning = false
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-        }
+// MARK: - STRUCTS DE SUPORTE (INDISPENSÁVEIS)
+struct ManualAddContainer<Content: View>: View {
+    let content: Content
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
+    var body: some View {
+        content.padding(20).background(RoundedRectangle(cornerRadius: 24).fill(Color.white.opacity(0.05))
+            .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.1), lineWidth: 0.5)))
     }
+}
 
-    private func testAndAddDevice(ip: String) {
-        guard let url = URL(string: "http://\(ip)/status") else { return }
-        
-        URLSession.shared.dataTask(with: url) { data, response, error in
-            guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                print("❌ Erro ao ler JSON de \(ip)")
-                return
+struct HardwarePickerMenu: View {
+    @Binding var selectedType: DeviceType
+    @EnvironmentObject var themeManager: ThemeManager
+    var body: some View {
+        Menu {
+            ForEach(DeviceType.allCases) { type in
+                Button(type.displayName) { selectedType = type }
             }
-            
-            print("DEBUG: JSON recebido de \(ip): \(json)") // Isto ajuda-te a ver o que o LED envia
-            
-            DispatchQueue.main.async {
-                var type = DeviceType.sensor
-                var name = "Dispositivo"
-                
-                // Lógica de detecção melhorada
-                if json["temperature"] != nil || json["temp"] != nil {
-                    type = .sensor
-                    name = "Sensor DHT"
-                }
-                else if json["gas"] != nil || json["mq2"] != nil {
-                    type = .gas
-                    name = "Detector de Gás"
-                }
-                // Verifica várias possibilidades para o LED
-                else if json["red"] != nil || json["r"] != nil || json["led"] != nil || json["rgb"] != nil {
-                    type = .led
-                    name = "LED RGB"
-                }
-                else if json["light"] != nil || json["relay"] != nil {
-                    type = .light
-                    name = "Luz Inteligente"
-                }
-                
-                let newDevice = Device(
-                    id: UUID().uuidString,
-                    name: name,
-                    type: type,
-                    ip: ip,
-                    connectionProtocol: .http,
-                    isOnline: true
-                )
-                
-                // Evita adicionar duplicados pelo IP
-                if !deviceVM.devices.contains(where: { $0.ip == ip }) {
-                    deviceVM.devices.append(newDevice)
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                }
-            }
-        }.resume()
-    }
-
-    private func addManualDevice() {
-        let newDevice = Device(id: UUID().uuidString, name: manualName, type: selectedType, ip: manualIP, connectionProtocol: selectedType == .led ? .udp : .http, isOnline: false)
-        deviceVM.devices.append(newDevice)
-        manualName = ""; manualIP = ""
-        dismiss()
-    }
-
-    private func isValidIP(_ ip: String) -> Bool {
-        let parts = ip.components(separatedBy: ".")
-        guard parts.count == 4 else { return false }
-        return parts.allSatisfy { part in
-            if let num = Int(part), num >= 0 && num <= 255 { return true }
-            return false
+        } label: {
+            HStack {
+                Text(selectedType.displayName).foregroundColor(.white)
+                Spacer(); Image(systemName: "chevron.down").font(.caption).foregroundColor(.secondary)
+            }.padding().background(Color.black.opacity(0.3)).cornerRadius(12)
         }
     }
+}
 
-    private func iconName(for type: DeviceType) -> String {
-        switch type {
-        case .light, .led: return "lightbulb.fill"
-        case .sensor: return "thermometer.medium"
-        case .gas: return "smoke.fill"
-        }
+struct CustomInputField: View {
+    let icon: String; let placeholder: String; @Binding var text: String; var keyboard: UIKeyboardType = .default
+    var body: some View {
+        HStack {
+            Image(systemName: icon).foregroundColor(.secondary).frame(width: 20)
+            TextField("", text: $text, prompt: Text(placeholder).foregroundColor(.gray.opacity(0.5))).foregroundColor(.white)
+        }.padding().background(Color.black.opacity(0.3)).cornerRadius(12).keyboardType(keyboard)
     }
 }

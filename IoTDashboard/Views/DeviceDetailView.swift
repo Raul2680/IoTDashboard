@@ -1,12 +1,23 @@
 import SwiftUI
+import Charts // Necessário para os gráficos (iOS 16+)
 
 struct DeviceDetailView: View {
     @ObservedObject var deviceVM: DeviceViewModel
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.dismiss) var dismiss
     let device: Device
     
+    // Estados Locais
     @State private var localState: LedState?
-    @State private var showWiFiConfig = false
+    @State private var showWiFiConfig = false // ✅ Recuperado para abrir o WiFiConfigView
+    
+    // Estados para Edição
+    @State private var isEditingName = false
+    @State private var editedName: String = ""
+    @State private var selectedRoom: String = "Sem Divisão"
+    
+    // Lista de divisões consistente
+    let availableRooms = ["Sala", "Cozinha", "Quarto", "Escritório", "Casa de Banho", "Garagem", "Exterior"]
     
     private var currentDevice: Device {
         deviceVM.devices.first(where: { $0.id == device.id }) ?? device
@@ -14,378 +25,310 @@ struct DeviceDetailView: View {
     
     var body: some View {
         ZStack {
-            // BACKGROUND TEMÁTICO
+            // MARK: - Background Dinâmico
             themeManager.currentTheme.deepBaseColor.ignoresSafeArea()
             
-            // Padrão de ícones
             if themeManager.currentTheme != .light {
-                BackgroundPatternView(theme: themeManager.currentTheme)
+                BackgroundPatternView(theme: themeManager.currentTheme).opacity(0.3)
             }
             
-            // Gradiente
             LinearGradient(
                 colors: [themeManager.accentColor.opacity(0.15), .clear],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            ).ignoresSafeArea()
             
-            ScrollView {
-                VStack(spacing: 24) {
-                    // MARK: - Cabeçalho
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(currentDevice.name)
-                                .font(.largeTitle).bold()
-                                .foregroundColor(themeManager.currentTheme == .light ? .primary : .white)
-                            Text(currentDevice.ip)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        StatusBadge(isOnline: currentDevice.isOnline)
-                    }
-                    .padding()
+            // MARK: - Conteúdo
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 25) {
+                    headerSection
                     
-                    // MARK: - Dashboard por Tipo
-                    Group {
-                        if currentDevice.type == .led {
-                            // ✅ CORRIGIDO - Usa estado local, do dispositivo ou default
-                            let ledState = localState ?? currentDevice.ledState ?? LedState(
-                                isOn: false,
-                                r: 255,
-                                g: 255,
-                                b: 255,
-                                brightness: 50
-                            )
-                            
-                            SimpleLedControl(
-                                device: currentDevice,
-                                state: ledState,
-                                deviceVM: deviceVM,
-                                onUpdate: { newState in
-                                    localState = newState
-                                }
-                            )
-                        } else if currentDevice.type == .gas {
-                            if let gas = currentDevice.gasData {
-                                GasDisplayView(data: gas)
-                                    .environmentObject(themeManager)
-                            } else {
-                                LoadingView(text: "A obter dados do sensor de gás...")
-                            }
-                        } else if currentDevice.type == .sensor {
-                            if let data = currentDevice.sensorData {
-                                SensorDisplayView(sensorData: data)
-                                    .environmentObject(themeManager)
-                            } else {
-                                LoadingView(text: "A ligar ao sensor...")
-                            }
-                        } else {
-                            UnknownDeviceView(type: currentDevice.type.rawValue)
-                        }
+                    if currentDevice.type == .sensor {
+                        HistoryChartSection(color: themeManager.accentColor)
                     }
-
                     
-                    Spacer()
+                    contentSection
                     
-                    // MARK: - Botão Remover
-                    Button(role: .destructive) {
-                        deviceVM.removeDevice(currentDevice)
-                    } label: {
-                        HStack {
-                            Image(systemName: "trash")
-                            Text("Remover Dispositivo")
-                        }
-                        .foregroundColor(.red)
-                        .padding()
-                        .background(Color.red.opacity(0.1))
-                        .cornerRadius(12)
-                    }
-                    .padding(.top, 20)
+                    Spacer(minLength: 30)
+                    
+                    removeButtonSection
                 }
+                .padding(.bottom, 30)
             }
         }
-        .navigationTitle(currentDevice.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
+                // ✅ Botão para abrir configuração de WiFi restaurado
                 Button {
                     showWiFiConfig = true
                 } label: {
-                    Image(systemName: "antenna.radiowaves.left.and.right")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                        .padding(8)
-                        .background(Circle().fill(themeManager.accentColor))
+                    Image(systemName: "wifi.circle.fill")
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(themeManager.accentColor)
+                        .font(.title3)
                 }
             }
         }
+        // ✅ Sheet de configuração WiFi restaurada
         .sheet(isPresented: $showWiFiConfig) {
             WiFiConfigView(device: currentDevice)
         }
-        .onAppear {
-            if let state = currentDevice.ledState {
-                localState = state
+        .alert("Renomear Dispositivo", isPresented: $isEditingName) {
+            TextField("Nome", text: $editedName)
+            Button("Cancelar", role: .cancel) { }
+            Button("Guardar") {
+                deviceVM.updateDeviceDetails(device: currentDevice, newName: editedName, newRoom: selectedRoom)
             }
+        }
+        .onAppear {
+            if let state = currentDevice.ledState { localState = state }
+            editedName = currentDevice.name
+            selectedRoom = currentDevice.room ?? "Sem Divisão"
+        }
+    }
+    
+    // MARK: - CABEÇALHO
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            HStack(alignment: .center) {
+                HStack {
+                    Text(currentDevice.name)
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundColor(themeManager.currentTheme == .light ? .primary : .white)
+                    
+                    Button {
+                        editedName = currentDevice.name
+                        isEditingName = true
+                    } label: {
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(.secondary.opacity(0.7))
+                    }
+                }
+                
+                Spacer()
+                StatusBadge(isOnline: currentDevice.isOnline)
+            }
+            
+            HStack {
+                Text(currentDevice.ip)
+                    .font(.system(.caption, design: .monospaced))
+                    .padding(6)
+                    .background(Color.black.opacity(0.2))
+                    .cornerRadius(6)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                Menu {
+                    ForEach(availableRooms, id: \.self) { room in
+                        Button {
+                            selectedRoom = room
+                            deviceVM.updateDeviceDetails(device: currentDevice, newName: currentDevice.name, newRoom: room)
+                        } label: {
+                            Label(room, systemImage: iconForRoom(room))
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: iconForRoom(currentDevice.room ?? "Sem Divisão"))
+                        Text(currentDevice.room ?? "Atribuir Sala")
+                    }
+                    .font(.subheadline.bold())
+                    .foregroundColor(themeManager.accentColor)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(themeManager.accentColor.opacity(0.1))
+                    .cornerRadius(20)
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 15)
+    }
+
+    private func iconForRoom(_ room: String) -> String {
+        switch room {
+        case "Sala": return "sofa.fill"
+        case "Cozinha": return "refrigerator.fill"
+        case "Quarto": return "bed.double.fill"
+        case "Escritório": return "desktopcomputer"
+        case "Casa de Banho": return "bathtub.fill"
+        case "Garagem": return "car.fill"
+        case "Exterior": return "leaf.fill"
+        default: return "house.fill"
+        }
+    }
+
+    @ViewBuilder
+    private var contentSection: some View {
+        VStack(spacing: 20) {
+            if currentDevice.type == .led {
+                let ledState = localState ?? currentDevice.ledState ?? LedState(isOn: false, r: 255, g: 255, b: 255, brightness: 50)
+                SimpleLedControl(device: currentDevice, state: ledState, deviceVM: deviceVM) { newState in
+                    localState = newState
+                }
+            } else if currentDevice.type == .gas {
+                if let gas = currentDevice.gasData {
+                    GasDisplayView(data: gas).environmentObject(themeManager)
+                } else {
+                    LoadingView(text: "A obter dados do sensor de gás...")
+                }
+            } else if currentDevice.type == .sensor {
+                if let data = currentDevice.sensorData {
+                    SensorDisplayView(sensorData: data).environmentObject(themeManager)
+                } else {
+                    LoadingView(text: "A ligar ao sensor...")
+                }
+            } else {
+                UnknownDeviceView(type: currentDevice.type.rawValue)
+            }
+        }
+        .padding(.horizontal, 20)
+    }
+    
+    private var removeButtonSection: some View {
+        Button(role: .destructive) {
+            deviceVM.removeDevice(currentDevice)
+            dismiss()
+        } label: {
+            HStack {
+                Image(systemName: "trash.fill")
+                Text("Remover Dispositivo")
+            }
+            .font(.headline)
+            .foregroundColor(.red)
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 16).fill(Color.red.opacity(0.1)))
+            .padding(.horizontal, 20)
         }
     }
 }
 
-// MARK: - Controlo LED Simplificado
+// MARK: - COMPONENTES AUXILIARES
+
+struct HistoryChartSection: View {
+    let color: Color
+    let mockData: [Double] = [20.1, 20.5, 21.2, 21.8, 22.1, 21.5, 20.8, 20.3]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Histórico (Últimas 24h)").font(.caption.bold()).foregroundColor(.secondary).padding(.leading, 5)
+            Chart {
+                ForEach(Array(mockData.enumerated()), id: \.offset) { index, value in
+                    LineMark(x: .value("Hora", index), y: .value("Valor", value)).interpolationMethod(.catmullRom).foregroundStyle(color)
+                    AreaMark(x: .value("Hora", index), y: .value("Valor", value)).interpolationMethod(.catmullRom).foregroundStyle(LinearGradient(colors: [color.opacity(0.3), .clear], startPoint: .top, endPoint: .bottom))
+                }
+            }.frame(height: 120).padding().background(Color.white.opacity(0.05)).cornerRadius(16)
+        }.padding(.horizontal, 20)
+    }
+}
+
 struct SimpleLedControl: View {
-    let device: Device
-    let state: LedState
-    let deviceVM: DeviceViewModel
-    let onUpdate: (LedState) -> Void
-    
-    @State private var color: Color
-    @State private var brightness: Double
-    
+    let device: Device; let state: LedState; let deviceVM: DeviceViewModel; let onUpdate: (LedState) -> Void
+    @State private var color: Color; @State private var brightness: Double
     init(device: Device, state: LedState, deviceVM: DeviceViewModel, onUpdate: @escaping (LedState) -> Void) {
-        self.device = device
-        self.state = state
-        self.deviceVM = deviceVM
-        self.onUpdate = onUpdate
-        _color = State(initialValue: Color(
-            red: Double(state.r)/255,
-            green: Double(state.g)/255,
-            blue: Double(state.b)/255
-        ))
+        self.device = device; self.state = state; self.deviceVM = deviceVM; self.onUpdate = onUpdate
+        _color = State(initialValue: Color(red: Double(state.r)/255, green: Double(state.g)/255, blue: Double(state.b)/255))
         _brightness = State(initialValue: Double(state.brightness) / 100.0)
     }
-    
     var body: some View {
-        VStack(spacing: 25) {
-            // Indicador Visual
+        VStack(spacing: 20) {
             ZStack {
-                Circle()
-                    .fill(state.isOn ? color : Color.gray)
-                    .frame(width: 120, height: 120)
-                    .shadow(color: state.isOn ? color.opacity(0.5) : .clear, radius: 15)
-                
-                Text(state.isOn ? "\(Int(brightness * 100))%" : "OFF")
-                    .font(.title.bold())
-                    .foregroundColor(.white)
+                Circle().fill(state.isOn ? color : Color.gray.opacity(0.2)).frame(width: 140, height: 140).blur(radius: state.isOn ? 20 : 0)
+                Image(systemName: state.isOn ? "lightbulb.fill" : "lightbulb").font(.system(size: 60)).foregroundColor(state.isOn ? color : .secondary)
+            }.padding(.vertical, 20)
+            VStack(spacing: 16) {
+                VStack(alignment: .leading) {
+                    HStack { Text("Brilho"); Spacer(); Text("\(Int(brightness * 100))%") }.font(.subheadline.bold()).foregroundColor(.secondary)
+                    CustomSlider(value: $brightness, range: 0...1, accentColor: color).frame(height: 40).onChange(of: brightness) { _ in sendUpdate() }
+                }.padding().background(Color.white.opacity(0.05)).cornerRadius(20)
+                ColorPicker("Cor", selection: $color, supportsOpacity: false).font(.headline).padding().background(Color.white.opacity(0.05)).cornerRadius(20).onChange(of: color) { _ in sendUpdate() }
+                Button(action: togglePower) {
+                    HStack { Image(systemName: "power"); Text(state.isOn ? "Desligar" : "Ligar") }
+                    .font(.headline).foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 16)
+                    .background(state.isOn ? Color.red.opacity(0.8) : Color.green.opacity(0.8)).cornerRadius(20)
+                }
             }
-            
-            // Color Picker
-            ColorPicker("Cor", selection: $color, supportsOpacity: false)
-                .padding()
-                .background(Color(uiColor: .secondarySystemBackground))
-                .cornerRadius(12)
-            
-            // Slider Brilho
-            HStack {
-                Image(systemName: "sun.min.fill").foregroundColor(.gray)
-                Slider(value: $brightness, in: 0...1)
-                    .onChange(of: brightness) { _ in
-                        sendUpdate()
-                    }
-                Image(systemName: "sun.max.fill").foregroundColor(.yellow)
-            }
-            .padding()
-            .background(Color(uiColor: .secondarySystemBackground))
-            .cornerRadius(12)
-            
-            // Botão Power
-            Button {
-                togglePower()
-            } label: {
-                Text(state.isOn ? "DESLIGAR" : "LIGAR")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(state.isOn ? Color.red : Color.green)
-                    .cornerRadius(16)
-                    .shadow(radius: 4)
-            }
-        }
-        .padding()
-        .onChange(of: color) { _ in
-            sendUpdate()
         }
     }
-    
     private func sendUpdate(isPowerToggle: Bool = false) {
-        let uiColor = UIColor(color)
-        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        let uiColor = UIColor(color); var r: CGFloat = 0; var g: CGFloat = 0; var b: CGFloat = 0; var a: CGFloat = 0
         uiColor.getRed(&r, green: &g, blue: &b, alpha: &a)
-        
-        let red = Int(r * 255)
-        let green = Int(g * 255)
-        let blue = Int(b * 255)
-        let briInt = Int(brightness * 100)
-        
-        var isOn = briInt > 0
-        if isPowerToggle {
-            isOn = !state.isOn
-        }
-        
-        let newState = LedState(isOn: isOn, r: red, g: green, b: blue, brightness: briInt)
+        let briInt = Int(brightness * 100); var isOn = briInt > 0
+        if isPowerToggle { isOn = !state.isOn }
+        let newState = LedState(isOn: isOn, r: Int(r*255), g: Int(g*255), b: Int(b*255), brightness: briInt)
         onUpdate(newState)
-        
-        // ✅ Envia via UDP
-        let udpService = UDPService(ip: device.ip)
-        if isPowerToggle {
-            let command = isOn ? "ON" : "OFF"
-            udpService.sendCommand(command)
-        } else {
-            udpService.sendColor(r: red, g: green, b: blue, brightness: briInt)
-        }
-        
-        // Fecha conexão após 0.5s
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            udpService.stop()
-        }
-        
-        print("✅ UDP enviado: R:\(red) G:\(green) B:\(blue) Brilho:\(briInt) Power:\(isOn)")
+        deviceVM.controlLEDviaUDP(device: device, power: isOn, r: Int(r*255), g: Int(g*255), b: Int(b*255), brightness: briInt)
     }
-    
-    private func togglePower() {
-        sendUpdate(isPowerToggle: true)
+    private func togglePower() { UIImpactFeedbackGenerator(style: .light).impactOccurred(); sendUpdate(isPowerToggle: true) }
+}
+
+struct CustomSlider: View {
+    @Binding var value: Double; var range: ClosedRange<Double>; var accentColor: Color
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.1))
+                Capsule().fill(accentColor).frame(width: geometry.size.width * CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound)))
+            }.gesture(DragGesture(minimumDistance: 0).onChanged { gesture in
+                let percent = Double(gesture.location.x / geometry.size.width)
+                value = min(max(range.lowerBound + percent * (range.upperBound - range.lowerBound), range.lowerBound), range.upperBound)
+            })
+        }
     }
 }
 
-// MARK: - Componentes Auxiliares
 struct StatusBadge: View {
     let isOnline: Bool
-    
     var body: some View {
-        HStack {
-            Circle()
-                .fill(isOnline ? Color.green : Color.red)
-                .frame(width: 8, height: 8)
-            Text(isOnline ? "Online" : "Offline")
-                .font(.caption.bold())
-                .foregroundColor(isOnline ? .green : .red)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            Capsule().stroke(isOnline ? Color.green.opacity(0.3) : Color.red.opacity(0.3))
-        )
+        HStack(spacing: 5) {
+            Circle().fill(isOnline ? Color.green : Color.red).frame(width: 8, height: 8)
+            Text(isOnline ? "ONLINE" : "OFFLINE").font(.system(size: 10, weight: .black))
+        }.padding(.horizontal, 12).padding(.vertical, 6).background(Capsule().fill(isOnline ? Color.green.opacity(0.1) : Color.red.opacity(0.1))).foregroundColor(isOnline ? .green : .red)
     }
 }
 
-struct LoadingView: View {
-    let text: String
-    
+struct SensorDisplayView: View {
+    let sensorData: SensorData; @EnvironmentObject var themeManager: ThemeManager
+    var body: some View {
+        HStack(spacing: 15) {
+            sensorCard(title: "Temperatura", value: String(format: "%.1f°C", sensorData.temperature), icon: "thermometer.medium", color: .orange)
+            sensorCard(title: "Humidade", value: String(format: "%.0f%%", sensorData.humidity), icon: "humidity.fill", color: .blue)
+        }
+    }
+    private func sensorCard(title: String, value: String, icon: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Image(systemName: icon).font(.title2).foregroundColor(color)
+            VStack(alignment: .leading, spacing: 2) { Text(value).font(.system(size: 24, weight: .bold, design: .rounded)); Text(title).font(.caption).foregroundColor(.secondary) }
+        }.frame(maxWidth: .infinity, alignment: .leading).padding().background(Color.white.opacity(0.05)).cornerRadius(20).overlay(RoundedRectangle(cornerRadius: 20).stroke(color.opacity(0.2), lineWidth: 1))
+    }
+}
+
+struct GasDisplayView: View {
+    let data: GasData; @EnvironmentObject var themeManager: ThemeManager
     var body: some View {
         VStack(spacing: 15) {
-            ProgressView().scaleEffect(1.5)
-            Text(text).font(.headline).foregroundColor(.secondary)
-        }
-        .frame(height: 180)
-        .frame(maxWidth: .infinity)
-        .background(Color(uiColor: .secondarySystemBackground))
-        .cornerRadius(20)
-        .padding()
+            HStack {
+                Image(systemName: "exclamationmark.shield.fill").font(.largeTitle).foregroundColor(data.status == 2 ? .red : themeManager.accentColor)
+                VStack(alignment: .leading) { Text("Sensor de Gás").font(.headline).foregroundColor(themeManager.currentTheme == .light ? .primary : .white); Text(data.statusText).font(.subheadline).foregroundColor(data.status == 2 ? .red : .secondary) }
+                Spacer()
+            }
+            HStack {
+                VStack { Text("Nível MQ-2").font(.caption).foregroundColor(.secondary); Text("\(data.mq2)").font(.title2.bold()).foregroundColor(themeManager.accentColor) }
+                Spacer()
+            }.padding().background(Color.white.opacity(0.05)).cornerRadius(12)
+        }.padding().background(Color.white.opacity(0.05)).cornerRadius(16).overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.1), lineWidth: 1))
     }
 }
 
 struct UnknownDeviceView: View {
     let type: String
-    
-    var body: some View {
-        VStack {
-            Image(systemName: "questionmark.circle").font(.largeTitle).foregroundColor(.orange)
-            Text("Tipo desconhecido: \(type)").foregroundColor(.secondary)
-        }
-        .padding()
-    }
+    var body: some View { VStack { Image(systemName: "questionmark.circle").font(.largeTitle).foregroundColor(.orange); Text("Tipo desconhecido: \(type)").foregroundColor(.secondary) }.padding() }
 }
 
-// MARK: - SensorDisplayView
-struct SensorDisplayView: View {
-    let sensorData: SensorData
-    @EnvironmentObject var themeManager: ThemeManager
-    
-    var body: some View {
-        HStack(spacing: 20) {
-            // Temperatura
-            VStack {
-                Image(systemName: "thermometer")
-                    .font(.title)
-                    .foregroundColor(.orange)
-                    .padding(.bottom, 5)
-                Text(String(format: "%.1f°C", sensorData.temperature))
-                    .font(.title2.bold())
-                    .foregroundColor(themeManager.currentTheme == .light ? .primary : .white)
-                Text("Temperatura")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(Color.orange.opacity(0.1))
-            .cornerRadius(16)
-            
-            // Humidade
-            VStack {
-                Image(systemName: "humidity")
-                    .font(.title)
-                    .foregroundColor(.blue)
-                    .padding(.bottom, 5)
-                Text(String(format: "%.0f%%", sensorData.humidity))
-                    .font(.title2.bold())
-                    .foregroundColor(themeManager.currentTheme == .light ? .primary : .white)
-                Text("Humidade")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(Color.blue.opacity(0.1))
-            .cornerRadius(16)
-        }
-        .padding()
-    }
-}
-
-// MARK: - GasDisplayView
-struct GasDisplayView: View {
-    let data: GasData
-    @EnvironmentObject var themeManager: ThemeManager
-    
-    var body: some View {
-        VStack(spacing: 15) {
-            HStack {
-                Image(systemName: "exclamationmark.shield.fill")
-                    .font(.largeTitle)
-                    .foregroundColor(data.status == 2 ? .red : themeManager.accentColor)
-                
-                VStack(alignment: .leading) {
-                    Text("Sensor de Gás")
-                        .font(.headline)
-                        .foregroundColor(themeManager.currentTheme == .light ? .primary : .white)
-                    Text(data.statusText)
-                        .font(.subheadline)
-                        .foregroundColor(data.status == 2 ? .red : .secondary)
-                }
-                Spacer()
-            }
-            
-            HStack {
-                VStack {
-                    Text("MQ-2")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text("\(data.mq2)")
-                        .font(.title2.bold())
-                        .foregroundColor(themeManager.accentColor)
-                }
-                Spacer()
-            }
-            .padding()
-            .background(Color(uiColor: .secondarySystemBackground))
-            .cornerRadius(12)
-        }
-        .padding()
-        .background(Color(uiColor: .systemBackground))
-        .cornerRadius(16)
-        .shadow(color: themeManager.accentColor.opacity(0.2), radius: 8)
-        .padding()
-    }
+struct LoadingView: View {
+    let text: String
+    var body: some View { VStack(spacing: 15) { ProgressView(); Text(text).font(.headline).foregroundColor(.secondary) }.frame(height: 180).frame(maxWidth: .infinity).background(Color.white.opacity(0.05)).cornerRadius(20) }
 }

@@ -113,7 +113,7 @@ class AutomationEngine: ObservableObject {
             }
             
             // Gás
-            if automation.triggerType == .gasDetected,
+            if automation.triggerType == .gas,
                automation.triggerDeviceId == device.id,
                let gasData = device.gasData,
                gasData.status == 1 {
@@ -173,7 +173,7 @@ class AutomationEngine: ObservableObject {
             sendCommand(to: device, command: "OFF")
             return (true, "Desligado: \(device.name)")
             
-        case .setColor:
+        case .setRGB:
             if let colorHex = action.value {
                 sendColorCommand(to: device, color: colorHex)
                 return (true, "Cor alterada: \(device.name)")

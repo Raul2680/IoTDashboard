@@ -149,16 +149,52 @@ class DeviceViewModel: ObservableObject {
     }
     
     func toggleDevice(_ device: Device) {
+        // 1. Encontrar o índice para atualizar a UI localmente
+        guard let index = devices.firstIndex(where: { $0.id == device.id }) else { return }
         let newState = !device.state
         
-        if device.type == .led || device.type == .light {
-            controlLEDviaUDP(device: device, power: newState)
-        } else {
-            if let index = devices.firstIndex(where: { $0.id == device.id }) {
-                devices[index].state = newState
-                saveDevices()
-            }
+        // ✅ MODO SIMULAÇÃO (Para os testes na Escola)
+        // Se o IP for o de loopback, apenas mudamos o estado visual
+        if device.ip == "127.0.0.1" {
+            devices[index].state = newState
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            saveDevices()
+            return // Não tenta fazer chamadas de rede reais
         }
+        
+        // ✅ DISPOSITIVOS REAIS
+        if device.type == .led || device.type == .light {
+            // Se o protocolo for UDP, usamos a tua função específica
+            if device.connectionProtocol == .udp {
+                controlLEDviaUDP(device: device, power: newState)
+                // Atualizamos o estado local após enviar o comando
+                devices[index].state = newState
+            } else {
+                // Se for luz via HTTP (ex: Shelly ou Tasmota)
+                toggleHTTPDevice(device: device, state: newState, index: index)
+            }
+        } else {
+            // Outros tipos de dispositivos (Sensores/Gás costumam ser apenas leitura,
+            // mas aqui permitimos o toggle se necessário)
+            devices[index].state = newState
+        }
+        
+        saveDevices()
+    }
+
+    // Função auxiliar para dispositivos HTTP (evita crashar a UI)
+    private func toggleHTTPDevice(device: Device, state: Bool, index: Int) {
+        let path = state ? "on" : "off"
+        guard let url = URL(string: "http://\(device.ip)/\(path)") else { return }
+        
+        URLSession.shared.dataTask(with: url) { _, response, _ in
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                DispatchQueue.main.async {
+                    self.devices[index].state = state
+                    self.saveDevices()
+                }
+            }
+        }.resume()
     }
     
     func fetchDeviceData(at index: Int) {

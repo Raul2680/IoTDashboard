@@ -7,6 +7,11 @@ class AuthViewModel: ObservableObject {
     @Published var currentUserName: String = ""
     @Published var currentUserEmail: String = ""
     
+    // ✅ CORREÇÃO: Especificamos 'FirebaseAuth.User' para não confundir com o teu 'User'
+    var currentUser: FirebaseAuth.User? {
+        return Auth.auth().currentUser
+    }
+    
     init() {
         // Verifica se há utilizador autenticado no Firebase
         checkAuthStatus()
