@@ -41,14 +41,37 @@ class DeviceViewModel: ObservableObject {
         for index in devices.indices {
             let device = devices[index]
             
-            // ✅ NOVO: Detecta se é dispositivo Home Assistant
-            if device.id.hasPrefix("HA_") {
+            // ✅ ADIÇÃO: Se for simulador, injeta dados fictícios dinâmicos
+            if device.ip == "127.0.0.1" {
+                refreshSimulatedDevice(at: index)
+            }
+            // ✅ Detecta se é dispositivo Home Assistant
+            else if device.id.hasPrefix("HA_") {
                 refreshHomeAssistantDevice(at: index)
             } else {
                 fetchDeviceData(at: index)
             }
         }
     }
+
+    // ✅ NOVO: Mantém o simulador "vivo" sem erros de rede
+    private func refreshSimulatedDevice(at index: Int) {
+        DispatchQueue.main.async {
+            self.devices[index].isOnline = true
+            
+            if self.devices[index].type == .sensor {
+                let currentTemp = self.devices[index].sensorData?.temperature ?? 22.0
+                // Faz a temperatura oscilar para testar automações e gráficos
+                self.devices[index].sensorData = SensorData(
+                    temperature: currentTemp + Double.random(in: -0.1...0.1),
+                    humidity: Double.random(in: 45...55),
+                    timestamp: Int(Date().timeIntervalSince1970)
+                )
+                self.automationViewModel?.checkSensorAutomations(for: self.devices[index])
+            }
+        }
+    }
+
     func updateDeviceDetails(device: Device, newName: String, newRoom: String) {
         if let index = devices.firstIndex(where: { $0.id == device.id }) {
             devices[index].name = newName
@@ -58,7 +81,7 @@ class DeviceViewModel: ObservableObject {
         }
     }
     
-    // ✅ NOVO: Refresh para dispositivos Home Assistant
+    // ✅ Refresh para dispositivos Home Assistant
     private func refreshHomeAssistantDevice(at index: Int) {
         guard let haService = homeAssistantService,
               let config = haService.config,
@@ -154,35 +177,28 @@ class DeviceViewModel: ObservableObject {
         let newState = !device.state
         
         // ✅ MODO SIMULAÇÃO (Para os testes na Escola)
-        // Se o IP for o de loopback, apenas mudamos o estado visual
         if device.ip == "127.0.0.1" {
             devices[index].state = newState
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             saveDevices()
-            return // Não tenta fazer chamadas de rede reais
+            return
         }
         
         // ✅ DISPOSITIVOS REAIS
         if device.type == .led || device.type == .light {
-            // Se o protocolo for UDP, usamos a tua função específica
             if device.connectionProtocol == .udp {
                 controlLEDviaUDP(device: device, power: newState)
-                // Atualizamos o estado local após enviar o comando
                 devices[index].state = newState
             } else {
-                // Se for luz via HTTP (ex: Shelly ou Tasmota)
                 toggleHTTPDevice(device: device, state: newState, index: index)
             }
         } else {
-            // Outros tipos de dispositivos (Sensores/Gás costumam ser apenas leitura,
-            // mas aqui permitimos o toggle se necessário)
             devices[index].state = newState
         }
         
         saveDevices()
     }
 
-    // Função auxiliar para dispositivos HTTP (evita crashar a UI)
     private func toggleHTTPDevice(device: Device, state: Bool, index: Int) {
         let path = state ? "on" : "off"
         guard let url = URL(string: "http://\(device.ip)/\(path)") else { return }
@@ -267,21 +283,25 @@ class DeviceViewModel: ObservableObject {
                         self.devices[index].temperature = temp
                         self.devices[index].humidity = hum
                         
-                        // ✅ CRUCIAL: AVISA AS AUTOMAÇÕES (ESP32)
                         self.automationViewModel?.checkSensorAutomations(for: self.devices[index])
                     }
                     
                     // --- ATUALIZAÇÃO DO SENSOR DE GÁS ---
                     if let gasValue = json["gas"] as? Int ?? json["mq2"] as? Int {
+                        let mq4Value = json["mq4"] as? Int ?? 0 // ✅ Adicionado MQ4
+                        let mq7Value = json["mq7"] as? Int ?? 0
+                        
+                        // Determina o status: se algum sensor estiver muito alto, passa a Perigo (2)
+                        let currentStatus = (gasValue > 1600 || mq4Value > 2300 || mq7Value > 700) ? 2 : 0
+                        
                         self.devices[index].gasData = GasData(
                             mq2: gasValue,
-                            mq7: json["mq7"] as? Int ?? 0,
-                            status: gasValue > 500 ? 2 : 0,
+                            mq4: mq4Value, // ✅ Certifica-te que a tua struct GasData tem este campo
+                            mq7: mq7Value,
+                            status: currentStatus,
                             timestamp: Int(Date().timeIntervalSince1970)
                         )
                         self.devices[index].gasLevel = gasValue
-                        
-                        // ✅ AVISA AS AUTOMAÇÕES (Gás ESP32)
                         self.automationViewModel?.checkSensorAutomations(for: self.devices[index])
                     }
                     
@@ -292,6 +312,18 @@ class DeviceViewModel: ObservableObject {
     }
     
     func controlLEDviaUDP(device: Device, power: Bool? = nil, r: Int? = nil, g: Int? = nil, b: Int? = nil, brightness: Int? = nil) {
+        // ✅ CORREÇÃO: Se for simulador, atualiza o estado local e não envia nada via rede
+        if device.ip == "127.0.0.1" {
+            if let index = devices.firstIndex(where: { $0.id == device.id }) {
+                if let p = power { devices[index].state = p }
+                if let r = r, let g = g, let b = b, let bri = brightness {
+                    devices[index].ledState = LedState(isOn: devices[index].state, r: r, g: g, b: b, brightness: bri)
+                }
+                saveDevices()
+            }
+            return // Para aqui o envio UDP (evita POSIX 61)
+        }
+
         if device.id.hasPrefix("HA_") {
             controlHomeAssistantDevice(device: device, power: power, r: r, g: g, b: b, brightness: brightness)
             return

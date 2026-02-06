@@ -1,56 +1,45 @@
 import SwiftUI
 import FirebaseFirestore
 
-// MARK: - VIEW PRINCIPAL
 struct AddDeviceView: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var themeManager: ThemeManager
     @ObservedObject var deviceVM: DeviceViewModel
     
-    // Serviços de Descoberta Reais
+    // ✅ Usamos StateObject para gerir o ciclo de vida dos serviços
     @StateObject private var bonjourService = BonjourService()
     @StateObject private var ssdpService = SSDPService()
     
-    // Estados de UI
     @State private var isScanning = false
     @State private var manualIP = ""
     @State private var manualName = ""
     @State private var selectedType: DeviceType = .sensor
-    @State private var showEditSheet = false
-    @State private var deviceToEdit: Device?
     
     var body: some View {
         NavigationView {
             ZStack {
-                // Fundo Base do Tema Selecionado
                 themeManager.currentTheme.deepBaseColor.ignoresSafeArea()
                 
-                // Padrão Geométrico
                 BackgroundPatternView(theme: themeManager.currentTheme)
                     .opacity(0.3)
                 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 24) {
-                        
-                        // 1. HEADER DE SCAN
                         scanHeaderSection
                         
-                        // 2. SIMULADOR (MODO ESCOLA)
                         simulatorSection
                         
-                        // 3. RESULTADOS BONJOUR
+                        // 🔍 Se houver IPs descobertos, mostra a secção
                         if !bonjourService.discoveredIPs.isEmpty {
                             discoverySection(
-                                title: "Bonjour / mDNS",
+                                title: "Dispositivos Bonjour",
                                 icon: "bolt.horizontal.circle.fill",
                                 ips: bonjourService.discoveredIPs
                             )
                         }
                         
-                        // 4. ADIÇÃO MANUAL
                         manualAddSection
                         
-                        // 5. DISPOSITIVOS EXISTENTES
                         if !deviceVM.devices.isEmpty {
                             existingDevicesSection
                         }
@@ -72,7 +61,7 @@ struct AddDeviceView: View {
     }
 }
 
-// MARK: - LÓGICA DE FUNCIONAMENTO (CORREÇÕES DA IMAGEM)
+// MARK: - LÓGICA DE FUNCIONAMENTO
 extension AddDeviceView {
     
     private func startScan() {
@@ -83,58 +72,47 @@ extension AddDeviceView {
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { isScanning = false }
     }
     
-    // ✅ CORREÇÃO: connectionProtocol adicionado e timestamp convertido para Int
-    private func addSimulatedDevice() {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        let types: [DeviceType] = [.sensor, .led, .gas]
-        let randomType = types.randomElement() ?? .sensor
+    // ✅ LÓGICA DE DESCOBERTA (Onde os erros aconteciam)
+    private func testAndAddDevice(ip: String) {
+        // CORREÇÃO: Aceder SEM o '$'. bonjourService.discoveredNames é um [String: String]
+        let discoveredName = bonjourService.discoveredNames[ip] ?? "ESP32 Desconhecido"
         
-        var mockDevice = Device(
-            id: UUID().uuidString,
-            name: "Simulado \(randomType.displayName)",
-            type: randomType,
-            ip: "127.0.0.1",
-            connectionProtocol: .http, // Fix do erro de parâmetro na imagem
+        // Criar o dispositivo usando a extension inteligente do Device.swift
+        let newDevice = Device(
+            name: discoveredName,
+            ip: ip,
             isOnline: true
         )
         
-        if randomType == .sensor {
-            mockDevice.sensorData = SensorData(
-                temperature: Double.random(in: 20...26),
-                humidity: Double.random(in: 45...55),
-                timestamp: Int(Date().timeIntervalSince1970) // Fix do erro de tipo na imagem
-            )
-        }
-        
-        deviceVM.devices.append(mockDevice)
+        deviceVM.devices.append(newDevice)
+        deviceVM.saveDevices()
         dismiss()
     }
 
-    // ✅ CORREÇÃO: connectionProtocol adicionado no modo manual
     private func addManualDevice() {
         let newDevice = Device(
-            id: UUID().uuidString,
             name: manualName,
-            type: selectedType,
             ip: manualIP,
-            connectionProtocol: selectedType == .led ? .udp : .http, // Fix do erro de parâmetro na imagem
+            type: selectedType,
             isOnline: true
         )
         deviceVM.devices.append(newDevice)
+        deviceVM.saveDevices()
         dismiss()
     }
 
-    // ✅ CORREÇÃO: connectionProtocol adicionado no modo auto
-    private func testAndAddDevice(ip: String) {
-        let newDevice = Device(
-            id: UUID().uuidString,
-            name: "ESP32 Auto",
-            type: .sensor,
-            ip: ip,
-            connectionProtocol: .http, // Fix do erro de parâmetro na imagem
+    private func addSimulatedDevice() {
+        let types: [DeviceType] = [.sensor, .led, .gas]
+        let randomType = types.randomElement() ?? .sensor
+        let mockDevice = Device(
+            name: "Simulado \(randomType.displayName)",
+            ip: "127.0.0.1",
+            type: randomType,
             isOnline: true
         )
-        deviceVM.devices.append(newDevice)
+        deviceVM.devices.append(mockDevice)
+        deviceVM.saveDevices()
+        dismiss()
     }
 
     private func isValidIP(_ ip: String) -> Bool {
@@ -144,8 +122,7 @@ extension AddDeviceView {
     }
 }
 
-// MARK: - COMPONENTES DE UI (ESTRUTURA COMPLETA)
-
+// MARK: - COMPONENTES DE UI
 extension AddDeviceView {
     
     private var scanHeaderSection: some View {
@@ -154,95 +131,19 @@ extension AddDeviceView {
                 Circle()
                     .stroke(themeManager.accentColor.opacity(0.2), lineWidth: 2)
                     .frame(width: 80, height: 80)
-                
                 Image(systemName: "antenna.radiowaves.left.and.right")
                     .font(.system(size: 30))
                     .foregroundColor(themeManager.accentColor)
                     .symbolEffect(.variableColor.iterative, isActive: isScanning)
             }
-            
             Button(action: startScan) {
                 Text(isScanning ? "A procurar..." : "Procurar Dispositivos")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 30)
-                    .padding(.vertical, 12)
+                    .font(.headline).foregroundColor(.white)
+                    .padding(.horizontal, 30).padding(.vertical, 12)
                     .background(isScanning ? Color.gray : themeManager.accentColor)
                     .clipShape(Capsule())
-            }
-            .disabled(isScanning)
-        }
-        .padding(.vertical)
-    }
-    
-    private var simulatorSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Modo Escola (Simulador)", systemImage: "flask.fill")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.orange)
-                .textCase(.uppercase)
-                .padding(.leading, 4)
-            
-            Button(action: addSimulatedDevice) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Simular Hardware ESP32")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Text("Gera dados fictícios (IP 127.0.0.1)")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-                    Spacer()
-                    Image(systemName: "plus.viewfinder")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                }
-                .padding()
-                .background(Color.orange.opacity(0.15))
-                .cornerRadius(16)
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.orange.opacity(0.3), lineWidth: 1))
-            }
-        }
-    }
-    
-    private var manualAddSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label("Adição Manual", systemImage: "plus.circle.fill")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.secondary)
-                .textCase(.uppercase)
-                .padding(.leading, 4)
-            
-            ManualAddContainer {
-                VStack(spacing: 18) {
-                    CustomInputField(icon: "tag.fill", placeholder: "Nome do Dispositivo", text: $manualName)
-                    CustomInputField(icon: "network", placeholder: "Endereço IP", text: $manualIP, keyboard: .numbersAndPunctuation)
-                    
-                    HardwarePickerMenu(selectedType: $selectedType)
-                    
-                    Button(action: {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        addManualDevice()
-                    }) {
-                        Text("Configurar Dispositivo")
-                            .bold()
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background {
-                                if manualName.isEmpty || !isValidIP(manualIP) {
-                                    Color.gray.opacity(0.3)
-                                } else {
-                                    Rectangle().fill(themeManager.accentColor.gradient)
-                                }
-                            }
-                            .foregroundColor(.white)
-                            .cornerRadius(14)
-                    }
-                    .disabled(manualName.isEmpty || !isValidIP(manualIP))
-                }
-            }
-        }
+            }.disabled(isScanning)
+        }.padding(.vertical)
     }
 
     private func discoverySection(title: String, icon: String, ips: [String]) -> some View {
@@ -252,46 +153,67 @@ extension AddDeviceView {
                 ForEach(ips, id: \.self) { ip in
                     HStack {
                         VStack(alignment: .leading) {
-                            Text(ip).font(.headline).foregroundColor(.white)
-                            Text("Protocolo mDNS").font(.caption).foregroundColor(.gray)
+                            // ✅ CORREÇÃO: Acesso direto ao dicionário para o componente Text
+                            Text(bonjourService.discoveredNames[ip] ?? "ESP32 Descoberto")
+                                .font(.headline).foregroundColor(.white)
+                            Text(ip).font(.caption).foregroundColor(.gray)
                         }
                         Spacer()
                         Button("Add") { testAndAddDevice(ip: ip) }
-                            .buttonStyle(.bordered)
-                            .tint(themeManager.accentColor)
+                            .buttonStyle(.bordered).tint(themeManager.accentColor)
                     }
                     .padding()
                     if ip != ips.last { Divider().background(Color.white.opacity(0.1)) }
                 }
-            }
-            .background(Color.white.opacity(0.05)).cornerRadius(16)
+            }.background(Color.white.opacity(0.05)).cornerRadius(16)
+        }
+    }
+
+    private var simulatorSection: some View {
+        Button(action: addSimulatedDevice) {
+            HStack {
+                VStack(alignment: .leading) {
+                    Text("Modo Escola").font(.headline).foregroundColor(.white)
+                    Text("Simular Hardware ESP32").font(.caption).foregroundColor(.white.opacity(0.7))
+                }
+                Spacer()
+                Image(systemName: "flask.fill").foregroundColor(.orange)
+            }.padding().background(Color.orange.opacity(0.2)).cornerRadius(16)
+        }
+    }
+
+    private var manualAddSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label("Adição Manual", systemImage: "plus.circle.fill").font(.caption.bold()).foregroundColor(.secondary)
+            VStack(spacing: 15) {
+                CustomInputField(icon: "tag.fill", placeholder: "Nome", text: $manualName)
+                CustomInputField(icon: "network", placeholder: "IP", text: $manualIP, keyboard: .numbersAndPunctuation)
+                HardwarePickerMenu(selectedType: $selectedType)
+                Button("Configurar Dispositivo") { addManualDevice() }
+                    .frame(maxWidth: .infinity).padding().background(themeManager.accentColor).foregroundColor(.white).cornerRadius(12)
+                    .disabled(manualName.isEmpty || !isValidIP(manualIP))
+            }.padding().background(Color.white.opacity(0.05)).cornerRadius(16)
         }
     }
 
     private var existingDevicesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Dispositivos na Rede").font(.caption.bold()).foregroundColor(.gray)
+            Text("Dispositivos Salvos").font(.caption.bold()).foregroundColor(.gray)
             VStack(spacing: 0) {
                 ForEach(deviceVM.devices) { device in
                     HStack {
-                        Image(systemName: device.type == .sensor ? "thermometer.medium" : "lightbulb.fill")
-                            .foregroundColor(themeManager.accentColor).frame(width: 30)
-                        VStack(alignment: .leading) {
-                            Text(device.name).font(.subheadline.bold()).foregroundColor(.white)
-                            Text(device.ip).font(.caption).foregroundColor(.gray)
-                        }
+                        Image(systemName: device.type == .gas ? "smoke.fill" : "cpu").foregroundColor(themeManager.accentColor)
+                        Text(device.name).foregroundColor(.white)
                         Spacer()
-                        Circle().fill(device.isOnline ? .green : .red).frame(width: 8, height: 8)
-                    }
-                    .padding()
+                        Text(device.ip).font(.caption).foregroundColor(.gray)
+                    }.padding()
                 }
-            }
-            .background(Color.white.opacity(0.05)).cornerRadius(16)
+            }.background(Color.white.opacity(0.05)).cornerRadius(16)
         }
     }
 }
 
-// MARK: - STRUCTS DE SUPORTE (INDISPENSÁVEIS)
+// MARK: - STRUCTS DE SUPORTE
 struct ManualAddContainer<Content: View>: View {
     let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
@@ -303,7 +225,6 @@ struct ManualAddContainer<Content: View>: View {
 
 struct HardwarePickerMenu: View {
     @Binding var selectedType: DeviceType
-    @EnvironmentObject var themeManager: ThemeManager
     var body: some View {
         Menu {
             ForEach(DeviceType.allCases) { type in

@@ -307,19 +307,54 @@ struct SensorDisplayView: View {
 }
 
 struct GasDisplayView: View {
-    let data: GasData; @EnvironmentObject var themeManager: ThemeManager
+    let data: GasData
+    @EnvironmentObject var themeManager: ThemeManager
+    
     var body: some View {
         VStack(spacing: 15) {
             HStack {
-                Image(systemName: "exclamationmark.shield.fill").font(.largeTitle).foregroundColor(data.status == 2 ? .red : themeManager.accentColor)
-                VStack(alignment: .leading) { Text("Sensor de Gás").font(.headline).foregroundColor(themeManager.currentTheme == .light ? .primary : .white); Text(data.statusText).font(.subheadline).foregroundColor(data.status == 2 ? .red : .secondary) }
+                Image(systemName: "exclamationmark.shield.fill")
+                    .font(.largeTitle)
+                    .foregroundColor(data.status == 2 ? .red : .green)
+                
+                VStack(alignment: .leading) {
+                    Text("Monitorização de Gases")
+                        .font(.headline)
+                    Text(data.status == 2 ? "PERIGO: Fuga Detetada!" : "Ambiente Seguro")
+                        .font(.subheadline)
+                        .foregroundColor(data.status == 2 ? .red : .secondary)
+                }
                 Spacer()
             }
-            HStack {
-                VStack { Text("Nível MQ-2").font(.caption).foregroundColor(.secondary); Text("\(data.mq2)").font(.title2.bold()).foregroundColor(themeManager.accentColor) }
-                Spacer()
-            }.padding().background(Color.white.opacity(0.05)).cornerRadius(12)
-        }.padding().background(Color.white.opacity(0.05)).cornerRadius(16).overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.1), lineWidth: 1))
+            .padding(.bottom, 5)
+            
+            // ✅ Grelha com os 3 Sensores
+            HStack(spacing: 10) {
+                gasValuePill(label: "MQ-2", value: data.mq2, color: .orange)
+                gasValuePill(label: "MQ-4", value: data.mq4 ?? 0, color: .blue)
+                gasValuePill(label: "MQ-7", value: data.mq7, color: .purple)
+            }
+        }
+        .padding()
+        .background(Color.white.opacity(0.05))
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(data.status == 2 ? Color.red.opacity(0.5) : Color.white.opacity(0.1), lineWidth: 1))
+    }
+    
+    private func gasValuePill(label: String, value: Int, color: Color) -> some View {
+        VStack {
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text("\(value)")
+                .font(.system(.body, design: .rounded))
+                .bold()
+                .foregroundColor(color)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(Color.black.opacity(0.2))
+        .cornerRadius(10)
     }
 }
 

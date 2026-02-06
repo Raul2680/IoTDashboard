@@ -34,7 +34,6 @@ struct HomeView: View {
             ZStack {
                 themeManager.currentTheme.deepBaseColor.ignoresSafeArea()
                 
-                // Padrão de Fundo (Struct corrigida abaixo)
                 if themeManager.currentTheme != .light {
                     BackgroundPatternView(theme: themeManager.currentTheme).opacity(0.4)
                 }
@@ -60,6 +59,10 @@ struct HomeView: View {
                 }
             }
             .navigationBarHidden(true)
+            // ✅ CORREÇÃO DO ZOOM: Aplicamos o blur e escala aqui para uma transição suave
+            .blur(radius: deviceVM.showQuickControl ? 6 : 0)
+            .scaleEffect(deviceVM.showQuickControl ? 0.95 : 1.0)
+            .animation(.easeInOut(duration: 0.35), value: deviceVM.showQuickControl)
         }
         .navigationViewStyle(StackNavigationViewStyle())
         .sheet(isPresented: $showAddDevice) { AddDeviceView(deviceVM: deviceVM) }
@@ -85,7 +88,6 @@ extension HomeView {
             }
             Spacer()
             
-            // ✅ CORREÇÃO: Acesso direto sem '$'
             if authVM.currentUser?.email == ADMIN_EMAIL {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -160,7 +162,9 @@ extension HomeView {
                         onAction: handleMenuAction,
                         onOpenControl: { device in
                             deviceVM.selectedDeviceForOverlay = device
-                            withAnimation(.spring()) { deviceVM.showQuickControl = true }
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                                deviceVM.showQuickControl = true
+                            }
                         }
                     )
                 }
@@ -206,24 +210,35 @@ struct DeviceGridView: View {
     var body: some View {
         LazyVGrid(columns: columns, spacing: 15) {
             ForEach(devices) { device in
-                AppleHomeDeviceCard(device: device, deviceVM: deviceVM)
-                    .onTapGesture {
-                        if device.type == .led || device.type == .light { onOpenControl(device) }
-                        else { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+                // ✅ SE FOR LUZ/LED: Abre o Controlo Rápido (Overlay)
+                if device.type == .led || device.type == .light {
+                    AppleHomeDeviceCard(device: device, deviceVM: deviceVM)
+                        .onTapGesture { onOpenControl(device) }
+                        .contextMenu { deviceContextMenu(for: device) }
+                }
+                // ✅ SE FOR SENSOR: Abre a Vista de Detalhes (Navegação)
+                else {
+                    NavigationLink(destination: DeviceDetailView(deviceVM: deviceVM, device: device)) {
+                        AppleHomeDeviceCard(device: device, deviceVM: deviceVM)
                     }
-                    .contextMenu {
-                        Button { onAction(.edit, device) } label: { Label("Editar", systemImage: "pencil") }
-                        Menu {
-                            ForEach(availableRooms, id: \.self) { room in
-                                Button { deviceVM.updateDeviceDetails(device: device, newName: device.name, newRoom: room) } label: { Label(room, systemImage: "folder") }
-                            }
-                        } label: { Label("Mover", systemImage: "arrow.right.circle") }
-                        Divider()
-                        Button(role: .destructive) { onAction(.delete, device) } label: { Label("Remover", systemImage: "trash") }
-                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .contextMenu { deviceContextMenu(for: device) }
+                }
             }
         }
         .padding(.horizontal, 25)
+    }
+    
+    @ViewBuilder
+    private func deviceContextMenu(for device: Device) -> some View {
+        Button { onAction(.edit, device) } label: { Label("Editar", systemImage: "pencil") }
+        Menu {
+            ForEach(availableRooms, id: \.self) { room in
+                Button { deviceVM.updateDeviceDetails(device: device, newName: device.name, newRoom: room) } label: { Label(room, systemImage: "folder") }
+            }
+        } label: { Label("Mover", systemImage: "arrow.right.circle") }
+        Divider()
+        Button(role: .destructive) { onAction(.delete, device) } label: { Label("Remover", systemImage: "trash") }
     }
 }
 
@@ -250,7 +265,8 @@ struct AppleHomeDeviceCard: View {
             Spacer()
         }
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 20).fill(themeManager.currentTheme == .light ? Color.black.opacity(0.04) : Color.white.opacity(0.06)))
+        .background(RoundedRectangle(cornerRadius: 20)
+            .fill(themeManager.currentTheme == .light ? Color.black.opacity(0.04) : Color.white.opacity(0.06)))
     }
     
     private var iconName: String {
@@ -268,3 +284,4 @@ struct AppleHomeDeviceCard: View {
     }
 }
 
+ 
